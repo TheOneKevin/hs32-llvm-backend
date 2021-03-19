@@ -203,6 +203,11 @@ TEST(TripleTest, ParsedIDs) {
   EXPECT_EQ(Triple::UnknownVendor, T.getVendor());
   EXPECT_EQ(Triple::UnknownOS, T.getOS());
 
+  T = Triple("hs32-unknown-unknown");
+  EXPECT_EQ(Triple::hs32, T.getArch());
+  EXPECT_EQ(Triple::UnknownVendor, T.getVendor());
+  EXPECT_EQ(Triple::UnknownOS, T.getOS());
+
   T = Triple("sparcel-unknown-unknown");
   EXPECT_EQ(Triple::sparcel, T.getArch());
   EXPECT_EQ(Triple::UnknownVendor, T.getVendor());
@@ -794,6 +799,11 @@ TEST(TripleTest, BitWidthPredicates) {
   EXPECT_TRUE(T.isArch32Bit());
   EXPECT_FALSE(T.isArch64Bit());
 
+  T.setArch(Triple::hs32);
+  EXPECT_FALSE(T.isArch16Bit());
+  EXPECT_TRUE(T.isArch32Bit());
+  EXPECT_FALSE(T.isArch64Bit());
+
   T.setArch(Triple::mips);
   EXPECT_FALSE(T.isArch16Bit());
   EXPECT_TRUE(T.isArch32Bit());
@@ -985,6 +995,10 @@ TEST(TripleTest, BitWidthArchVariants) {
   T.setArch(Triple::hsail64);
   EXPECT_EQ(Triple::hsail, T.get32BitArchVariant().getArch());
   EXPECT_EQ(Triple::hsail64, T.get64BitArchVariant().getArch());
+
+  T.setArch(Triple::hs32);
+  EXPECT_EQ(Triple::hsre, T.get32BitArchVariant().getArch());
+  EXPECT_EQ(Triple::UnknownArch, T.get64BitArchVariant().getArch());
 
   T.setArch(Triple::spir);
   EXPECT_EQ(Triple::spir, T.get32BitArchVariant().getArch());
