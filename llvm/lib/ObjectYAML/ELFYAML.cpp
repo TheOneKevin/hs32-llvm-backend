@@ -168,6 +168,7 @@ void ScalarEnumerationTraits<ELFYAML::ELF_EM>::enumeration(
     IO &IO, ELFYAML::ELF_EM &Value) {
 #define ECase(X) IO.enumCase(Value, #X, ELF::X)
   ECase(EM_NONE);
+  ECase(EM_HS32);
   ECase(EM_M32);
   ECase(EM_SPARC);
   ECase(EM_386);
