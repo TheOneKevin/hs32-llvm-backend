@@ -1,6 +1,14 @@
 include "HS32InstrFormats.td"
 
-def simm16 : Operand<i32>;
+class UImmAsmOperand<int width>
+    : AsmOperandClass {
+  let Name = "UImm"#width;
+  let RenderMethod = "addImmOperands";
+}
+
+def uimm16 : Operand<i16> {
+  let ParserMatchClass = UImmAsmOperand<16>;
+}
 
 class ALU_ri<bits<3> family, bits<3> var, string opcodestr>
     : HSInstTypeI<

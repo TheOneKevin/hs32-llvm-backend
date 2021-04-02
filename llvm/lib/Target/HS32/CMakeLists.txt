@@ -2,6 +2,7 @@ add_llvm_component_group(HS32)
 
 set(LLVM_TARGET_DEFINITIONS HS32.td)
 
+tablegen(LLVM HS32GenAsmMatcher.inc         -gen-asm-matcher)
 tablegen(LLVM HS32GenRegisterInfo.inc       -gen-register-info)
 tablegen(LLVM HS32GenInstrInfo.inc          -gen-instr-info)
 tablegen(LLVM HS32GenSubtargetInfo.inc      -gen-subtarget)
@@ -29,5 +30,6 @@ add_llvm_target(HS32CodeGen
         HS32
         )
 
+add_subdirectory(AsmParser)
 add_subdirectory(TargetInfo)
 add_subdirectory(MCTargetDesc)

@@ -1,7 +1,3 @@
-//
-// Created by Kevin on 3/21/2021.
-//
-
 #include "HS32MCAsmInfo.h"
 #include "llvm/ADT/Triple.h"
 using namespace llvm;

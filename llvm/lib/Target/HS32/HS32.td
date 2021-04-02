@@ -19,8 +19,13 @@ def : ProcessorModel<"generic-hs32", NoSchedModel, []>;
 // Define HS32 target
 //===----------------------------------------------------------------------===//
 
+def HS32AsmParser : AsmParser {
+    let ShouldEmitMatchRegisterAltName = 1;
+}
+
 def HS32 : Target {
     let InstructionSet = HS32InstrInfo;
+    let AssemblyParsers = [HS32AsmParser];
 }
 
 //===----------------------------------------------------------------------===//
