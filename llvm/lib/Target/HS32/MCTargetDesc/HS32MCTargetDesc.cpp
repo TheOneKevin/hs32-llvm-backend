@@ -1,5 +1,6 @@
 #include "HS32MCTargetDesc.h"
 #include "HS32MCAsmInfo.h"
+#include "HS32InstPrinter.h"
 #include "TargetInfo/HS32TargetInfo.h"
 
 #include "llvm/MC/MCELFStreamer.h"
@@ -51,6 +52,14 @@ static MCSubtargetInfo *createHS32SubtargetInfo(const Triple &TT,
   return createHS32MCSubtargetInfoImpl(TT, CPU, CPU, FS);
 }
 
+static MCInstPrinter *createHS32MCInstPrinter(const Triple &T,
+                                             unsigned SyntaxVariant,
+                                             const MCAsmInfo &MAI,
+                                             const MCInstrInfo &MII,
+                                             const MCRegisterInfo &MRI) {
+  return new HS32InstPrinter(MAI, MII, MRI);
+}
+
 extern "C" void LLVMInitializeHS32TargetMC() {
   Target &T = getTheHS32Target();
 
@@ -71,4 +80,7 @@ extern "C" void LLVMInitializeHS32TargetMC() {
 
   // Register the asm backend.
   TargetRegistry::RegisterMCAsmBackend(T, createHS32AsmBackend);
+
+  // Register the MCInstPrinter
+  TargetRegistry::RegisterMCInstPrinter(T, createHS32MCInstPrinter);
 }

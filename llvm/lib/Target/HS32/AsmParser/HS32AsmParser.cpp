@@ -60,6 +60,13 @@ protected:
   bool ParseExpression(const MCExpr *&Eval);
 
 public:
+  enum HS32MatchResultTy {
+    Match_Dummy = FIRST_TARGET_MATCH_RESULT_TY,
+#define GET_OPERAND_DIAGNOSTIC_TYPES
+    #include "HS32GenAsmMatcher.inc"
+#undef GET_OPERAND_DIAGNOSTIC_TYPES
+  };
+
   HS32AsmParser(const MCSubtargetInfo &STI, MCAsmParser &Parser,
                const MCInstrInfo &MII, const MCTargetOptions &Options)
       : MCTargetAsmParser(Options, STI, MII), STI(STI), Parser(Parser) {
@@ -328,11 +335,12 @@ bool HS32AsmParser::MatchAndEmitInstruction(SMLoc Loc, unsigned int &Opcode,
                                             bool MatchingInlineAsm) {
   MCInst Inst;
   switch(MatchInstructionImpl(Operands, Inst, ErrorInfo, MatchingInlineAsm)) {
-  case Match_Success:        return emit(Inst, Loc, Out);
-  case Match_MissingFeature: return missingFeature(Loc, ErrorInfo);
-  case Match_InvalidOperand: return invalidOperand(Loc, Operands, ErrorInfo);
-  case Match_MnemonicFail:   return Error(Loc, "invalid instruction");
-  default:                   return true;
+    case Match_Success:        return emit(Inst, Loc, Out);
+    case Match_MissingFeature: return missingFeature(Loc, ErrorInfo);
+    case Match_InvalidUImm16:  return Error(Loc, "immediate out of range, must be within [0, 65535]");
+    case Match_InvalidOperand: return invalidOperand(Loc, Operands, ErrorInfo);
+    case Match_MnemonicFail:   return Error(Loc, "invalid instruction");
+    default:                   return true;
   }
 }
 
