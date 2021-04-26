@@ -37,14 +37,12 @@ class HSInstTypeR<bits<8> opcode, dag outs, dag ins, string asmstr, list<dag> pa
     bits<4> rd;
     bits<4> rm;
     bits<4> rn;
-    bits<5> sh;
-    bits<2> sd;
+    bits<7> sh;
 
     let Opcode = opcode;
     let Inst{23-20} = rd;
     let Inst{19-16} = rm;
     let Inst{15-12} = rn;
-    let Inst{11-7} = sh;
-    let Inst{6-5} = sd;
+    let Inst{11-5} = sh;
     let Inst{4-0} = 0;
 }

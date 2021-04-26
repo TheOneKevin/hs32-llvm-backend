@@ -26,4 +26,16 @@ void HS32InstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
   }
 }
 
+void HS32InstPrinter::printSimmOffsetArg(const MCInst *MI, unsigned OpNo,
+                                         raw_ostream &O) {
+  signed Val = static_cast<signed>(MI->getOperand(OpNo).getImm());
+  if(Val == 0) {
+    return;
+  }
+  if(Val > 0) {
+    O << "+";
+  }
+  O << Val;
+}
+
 } // end namespace llvm

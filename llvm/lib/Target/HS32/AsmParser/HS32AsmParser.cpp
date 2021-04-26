@@ -52,12 +52,14 @@ class HS32AsmParser : public MCTargetAsmParser {
 private:
   bool emit(MCInst &Inst, SMLoc const &Loc, MCStreamer &Out) const;
   bool missingFeature(SMLoc const &Loc, uint64_t const &ErrorInfo);
-  bool invalidOperand(SMLoc const &Loc, OperandVector const &Operands, uint64_t const &ErrorInfo);
+  bool invalidOperand(SMLoc const &Loc, OperandVector const &Operands,
+                      uint64_t const &ErrorInfo);
 
 protected:
   bool ParseOperand(OperandVector &Operands);
   unsigned ParseRegisterName();
   bool ParseExpression(const MCExpr *&Eval);
+  bool ParseMemory(OperandVector &Operands, SMLoc &S, SMLoc &E);
 
 public:
   enum HS32MatchResultTy {
@@ -119,6 +121,10 @@ public:
 
   bool isUImm16() const {
     return isConstantImm() && isUInt<16>(getConstantImm());
+  }
+
+  bool isSImm16() const {
+    return isConstantImm() && isInt<16>(getConstantImm());
   }
 
   void addRegOperands(MCInst &Inst, unsigned N) const {
@@ -242,7 +248,8 @@ unsigned HS32AsmParser::ParseRegisterName() {
   return RegNum;
 }
 
-bool HS32AsmParser::ParseRegister(unsigned &RegNo, SMLoc &StartLoc, SMLoc &EndLoc) {
+bool HS32AsmParser::ParseRegister(unsigned &RegNo,
+                                  SMLoc &StartLoc, SMLoc &EndLoc) {
   if(tryParseRegister(RegNo, StartLoc, EndLoc))
     return TokError("invalid register name");
   return false;
@@ -256,6 +263,73 @@ bool HS32AsmParser::ParseExpression(const MCExpr *&EVal) {
 bool HS32AsmParser::ParseDirective(AsmToken DirectiveID) {
   // TODO: Implement
   return true;
+}
+
+bool HS32AsmParser::ParseMemory(OperandVector &Operands,
+                                SMLoc& StartLoc, SMLoc& EndLoc) {
+  unsigned Rm, Rn;
+  const MCExpr *EVal;
+  SMLoc Arg1Loc, OpLoc, Arg2Loc;
+
+  // Consume '['
+  getLexer().Lex();
+
+  // Parse register
+  Arg1Loc = getLexer().getLoc();
+  ParseRegister(Rm, StartLoc, EndLoc);
+
+  // If this is [reg], inject +0]
+  if(getLexer().getKind() == AsmToken::RBrac) {
+    // Consume ']'
+    getLexer().Lex();
+    // Inject '+0]'
+    getLexer().UnLex(AsmToken(AsmToken::RBrac, "]"));
+    getLexer().UnLex(AsmToken(AsmToken::Integer, "0", 0));
+    getLexer().UnLex(AsmToken(AsmToken::Plus, "+"));
+  }
+
+  // Parse operator
+  const auto Op = getLexer().getTok();
+  if(Op.getKind() != AsmToken::Plus && Op.getKind() != AsmToken::Minus)
+    return Error(EndLoc, "malformed memory reference, expecting '+' or '-'");
+  OpLoc = getLexer().getLoc();
+  Arg2Loc = SMLoc::getFromPointer(OpLoc.getPointer() + 1);
+
+  // Consume operator
+  getLexer().Lex();
+
+  if(!tryParseRegister(Rn, Arg2Loc, EndLoc)
+     && Op.getKind() == AsmToken::Plus) {
+    if(getLexer().getKind() != AsmToken::RBrac)
+      return Error(EndLoc, "malformed memory reference, expecting ']'");
+    // Consume ']'
+    getLexer().Lex();
+    // Push operands
+    Operands.push_back(HS32Operand::CreateToken("[", StartLoc));
+    Operands.push_back(HS32Operand::CreateReg(Rm, Arg1Loc, EndLoc));
+    Operands.push_back(HS32Operand::CreateToken("+", OpLoc));
+    Operands.push_back(HS32Operand::CreateReg(Rn, Arg2Loc, EndLoc));
+    Operands.push_back(HS32Operand::CreateToken("]", EndLoc));
+    return false;
+  }
+
+  // Add back operator (for signed imm)
+  getLexer().UnLex(Op);
+
+  if(!ParseExpression(EVal)) {
+    if(getLexer().getKind() != AsmToken::RBrac)
+      return Error(EndLoc, "malformed memory reference, expecting ']'");
+    // Consume ']'
+    getLexer().Lex();
+    // Push operands
+    Operands.push_back(HS32Operand::CreateToken("[", StartLoc));
+    Operands.push_back(HS32Operand::CreateReg(Rm, Arg1Loc, EndLoc));
+    Operands.push_back(HS32Operand::CreateImm(EVal, OpLoc, EndLoc));
+    Operands.push_back(HS32Operand::CreateToken("]", EndLoc));
+    return false;
+  }
+
+  return Error(EndLoc, "malformed memory reference");
 }
 
 bool HS32AsmParser::ParseOperand(OperandVector &Operands) {
@@ -273,27 +347,28 @@ bool HS32AsmParser::ParseOperand(OperandVector &Operands) {
   const MCExpr *EVal;
 
   switch (getLexer().getKind()) {
-  case AsmToken::Identifier:
-  case AsmToken::LParen:
-  case AsmToken::Plus:
-  case AsmToken::Minus:
-  case AsmToken::Integer:
-  case AsmToken::Dot:
-  case AsmToken::Dollar:
-  case AsmToken::Exclaim:
-  case AsmToken::Tilde:
-    if (!ParseExpression(EVal)) {
-      break;
-    }
-    LLVM_FALLTHROUGH;
-  default:
-    return Error(S, "unknown operand");
+    case AsmToken::LBrac:
+      return ParseMemory(Operands, S, E);
+    case AsmToken::Identifier:
+    case AsmToken::LParen:
+    case AsmToken::Plus:
+    case AsmToken::Minus:
+    case AsmToken::Integer:
+    case AsmToken::Dot:
+    case AsmToken::Dollar:
+    case AsmToken::Exclaim:
+    case AsmToken::Tilde:
+      if (!ParseExpression(EVal)) {
+        break;
+      }
+      // clang-tidy complains with LLVM_FALLTHROUGH :(
+      return Error(S, "unknown operand");
+    default:
+      return Error(S, "unknown operand");
   }
 
   // This is an expression
   Operands.push_back(HS32Operand::CreateImm(EVal, S, E));
-
-  // TODO: Memory operands
   return false;
 }
 
@@ -335,12 +410,13 @@ bool HS32AsmParser::MatchAndEmitInstruction(SMLoc Loc, unsigned int &Opcode,
                                             bool MatchingInlineAsm) {
   MCInst Inst;
   switch(MatchInstructionImpl(Operands, Inst, ErrorInfo, MatchingInlineAsm)) {
-    case Match_Success:        return emit(Inst, Loc, Out);
-    case Match_MissingFeature: return missingFeature(Loc, ErrorInfo);
-    case Match_InvalidUImm16:  return Error(Loc, "immediate out of range, must be within [0, 65535]");
-    case Match_InvalidOperand: return invalidOperand(Loc, Operands, ErrorInfo);
-    case Match_MnemonicFail:   return Error(Loc, "invalid instruction");
-    default:                   return true;
+    case Match_Success:         return emit(Inst, Loc, Out);
+    case Match_MissingFeature:  return missingFeature(Loc, ErrorInfo);
+    case Match_InvalidUImm16:   return Error(Loc, "immediate must be an integer within [0, 65535]");
+    case Match_InvalidSImm16:   return Error(Loc, "immediate must be an integer within [-32768, 32767]");
+    case Match_InvalidOperand:  return invalidOperand(Loc, Operands, ErrorInfo);
+    case Match_MnemonicFail:    return Error(Loc, "invalid instruction");
+    default:                    return true;
   }
 }
 

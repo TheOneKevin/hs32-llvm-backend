@@ -1,91 +1,172 @@
 include "HS32InstrFormats.td"
 
-class UImmAsmOperand<int width>
-    : AsmOperandClass {
-  let Name = "UImm"#width;
-  let RenderMethod = "addImmOperands";
-  let DiagnosticType = !strconcat("Invalid", Name);
+class ImmOperand<string prefix, int width> : AsmOperandClass {
+    let Name = prefix#"Imm"#width;
+    let RenderMethod = "addImmOperands";
+    let DiagnosticType = !strconcat("Invalid", Name);
+}
+class UImmAsmOperand<int width> : ImmOperand<"U", width> { }
+class SImmAsmOperand<int width> : ImmOperand<"S", width> { }
+
+def uimm16 : Operand<i32> {
+    let ParserMatchClass = UImmAsmOperand<16>;
 }
 
-def uimm16 : Operand<i16> {
-  let ParserMatchClass = UImmAsmOperand<16>;
+def simm16 : Operand<i32> {
+    let ParserMatchClass = SImmAsmOperand<16>;
+}
+
+def simm16offset : Operand<i32> {
+    let ParserMatchClass = SImmAsmOperand<16>;
+    let PrintMethod = "printSimmOffsetArg";
 }
 
 //===----------------------------------------------------------------------===//
-// MOV encodings
+// LDR and STR memory instructions
 //===----------------------------------------------------------------------===//
 
-def RMOV    : HSInstTypeR<{0b001, 0b00, 0b000},
-                          (outs GPR:$rd), (ins GPR:$rm, GPR:$rn),
-                          "MOV \t$rd, $rm, $rn", []>;
-def IMOV    : HSInstTypeI<{0b001, 0b00, 0b100},
-                          (outs GPR:$rd), (ins GPR:$rm, uimm16:$imm16),
-                          "MOV \t$rd, $rm, $imm16", []>;
+def ILDR : HSInstTypeI<{0b000, 0b10, 0b100},
+                       (outs GPR:$rd), (ins GPR:$rm, simm16offset:$imm16),
+                       "ldr\t$rd, [${rm}${imm16}]", []> {
+    let mayLoad = true;
+}
+
+def RLDR : HSInstTypeR<{0b000, 0b10, 0b000},
+                       (outs GPR:$rd), (ins GPR:$rm, GPR:$rn),
+                       "ldr\t$rd, [${rm}+${rn}]", []> {
+    let mayLoad = true;
+}
+
+def ISTR : HSInstTypeI<{0b000, 0b10, 0b100},
+                       (outs ), (ins GPR:$rm, simm16offset:$imm16, GPR:$rd),
+                       "str\t[${rm}${imm16}], $rd", []> {
+    let mayStore = true;
+}
+
+def RSTR : HSInstTypeR<{0b000, 0b10, 0b000},
+                       (outs ), (ins GPR:$rm, GPR:$rn, GPR:$rd),
+                       "str\t[${rm}+${rn}], $rd", []> {
+    let mayStore = true;
+}
 
 //===----------------------------------------------------------------------===//
-// ALU encodings
+// MOV instructions
+//===----------------------------------------------------------------------===//
+
+def RMOV : HSInstTypeR<{0b001, 0b00, 0b000},
+                       (outs GPR:$rd), (ins GPR:$rm, GPR:$rn),
+                       "mov \t$rd, $rm, $rn", []>;
+def IMOV : HSInstTypeI<{0b001, 0b00, 0b100},
+                       (outs GPR:$rd), (ins GPR:$rm, uimm16:$imm16),
+                       "mov \t$rd, $rm, $imm16", []>;
+
+//===----------------------------------------------------------------------===//
+// ALU instructions
 //===----------------------------------------------------------------------===//
 
 class ALU_ri<bits<3> family, bits<3> var, string opcodestr>
     : HSInstTypeI<
         {family, 0b00, var},
-        (outs GPR:$rd),
-        (ins GPR:$rm, uimm16:$imm16),
+        (outs GPR:$rd), (ins GPR:$rm, uimm16:$imm16),
         opcodestr#"\t$rd, $rm, $imm16", []
     > { }
 
 class ALU_rr<bits<3> family, bits<3> var, string opcodestr>
     : HSInstTypeR<
         {family, 0b00, var},
-        (outs GPR:$rd),
-        (ins GPR:$rm, GPR:$rn),
+        (outs GPR:$rd), (ins GPR:$rm, GPR:$rn),
         opcodestr#"\t$rd, $rm, $rn", []
     > { }
 
-def RADD    : ALU_rr<0b010, 0b000, "ADD">;
-def IADD    : ALU_ri<0b010, 0b100, "ADD">;
-def RADDC   : ALU_rr<0b010, 0b001, "ADDC">;
-def IADDC   : ALU_ri<0b010, 0b101, "ADDC">;
+def RADD    : ALU_rr<0b010, 0b000, "add">;
+def IADD    : ALU_ri<0b010, 0b100, "add">;
+def RADDC   : ALU_rr<0b010, 0b001, "addc">;
+def IADDC   : ALU_ri<0b010, 0b101, "addc">;
 
-def RSUB    : ALU_rr<0b011, 0b000, "SUB">;
-def ISUB    : ALU_ri<0b011, 0b100, "SUB">;
-def RRSUB   : ALU_rr<0b011, 0b001, "RSUB">;
-def IRSUB   : ALU_ri<0b011, 0b101, "RSUB">;
-def RSUBC   : ALU_rr<0b011, 0b010, "SUBC">;
-def ISUBC   : ALU_ri<0b011, 0b110, "SUBC">;
-def RRSUBC  : ALU_rr<0b011, 0b011, "RSUBC">;
-def IRSUBC  : ALU_ri<0b011, 0b111, "RSUBC">;
+def RSUB    : ALU_rr<0b011, 0b000, "sub">;
+def ISUB    : ALU_ri<0b011, 0b100, "sub">;
+def RRSUB   : ALU_rr<0b011, 0b001, "rsub">;
+def IRSUB   : ALU_ri<0b011, 0b101, "rsub">;
+def RSUBC   : ALU_rr<0b011, 0b010, "subc">;
+def ISUBC   : ALU_ri<0b011, 0b110, "subc">;
+def RRSUBC  : ALU_rr<0b011, 0b011, "rsubc">;
+def IRSUBC  : ALU_ri<0b011, 0b111, "rsubc">;
 
-def RAND    : ALU_rr<0b100, 0b000, "AND">;
-def IAND    : ALU_ri<0b100, 0b100, "AND">;
-def RBIC    : ALU_rr<0b100, 0b001, "BIC">;
-def IBIC    : ALU_ri<0b100, 0b101, "BIC">;
-def ROR     : ALU_ri<0b101, 0b000, "OR">;
-def IOR     : ALU_ri<0b101, 0b100, "OR">;
-def RXOR    : ALU_rr<0b110, 0b000, "XOR">;
-def IXOR    : ALU_ri<0b110, 0b100, "XOR">;
+def RAND    : ALU_rr<0b100, 0b000, "and">;
+def IAND    : ALU_ri<0b100, 0b100, "and">;
+def RBIC    : ALU_rr<0b100, 0b001, "bic">;
+def IBIC    : ALU_ri<0b100, 0b101, "bic">;
+def ROR     : ALU_ri<0b101, 0b000, "or">;
+def IOR     : ALU_ri<0b101, 0b100, "or">;
+def RXOR    : ALU_rr<0b110, 0b000, "xor">;
+def IXOR    : ALU_ri<0b110, 0b100, "xor">;
 
 //===----------------------------------------------------------------------===//
-// CMP and TST encodings
+// CMP and TST instructions
 //===----------------------------------------------------------------------===//
 
 class CMP_ri<bits<3> family, bits<3> var, string opcodestr>
     : HSInstTypeI<
         {family, 0b01, var},
-        (outs ),
-        (ins GPR:$rm, uimm16:$imm16),
+        (outs ), (ins GPR:$rm, uimm16:$imm16),
         opcodestr#"\t$rm, $imm16", []
     > { }
 
 class CMP_rr<bits<3> family, bits<3> var, string opcodestr>
     : HSInstTypeR<
         {family, 0b01, var},
-        (outs ),
-        (ins GPR:$rm, GPR:$rn),
+        (outs ), (ins GPR:$rm, GPR:$rn),
         opcodestr#"\t$rm, $rn", []
     > { }
 
-def RCMP    : CMP_rr<0b011, 0b000, "CMP">;
-def ICMP    : CMP_ri<0b011, 0b100, "CMP">;
-def RTST    : CMP_rr<0b100, 0b000, "TST">;
-def ITST    : CMP_ri<0b100, 0b100, "TST">;
+def RCMP    : CMP_rr<0b011, 0b000, "cmp">;
+def ICMP    : CMP_ri<0b011, 0b100, "cmp">;
+def RTST    : CMP_rr<0b100, 0b000, "tst">;
+def ITST    : CMP_ri<0b100, 0b100, "tst">;
+
+//===----------------------------------------------------------------------===//
+// Branch instructions
+//===----------------------------------------------------------------------===//
+
+class BCC_pi<bits<4> cond, string opcodestr>
+    : HSInstTypeI<
+        {0b0101, cond}, (outs ), (ins simm16:$imm16),
+        opcodestr#"\t$imm16", []
+    > { }
+class LCC_pi<bits<4> cond, string opcodestr>
+    : HSInstTypeI<
+        {0b0110, cond}, (outs ), (ins simm16:$imm16),
+        opcodestr#"\t$imm16", []
+    > { }
+
+def JMP     : BCC_pi<0b0000, "jmp">;
+def BEQ     : BCC_pi<0b0001, "beq">;
+def BNE     : BCC_pi<0b0010, "bne">;
+def BCS     : BCC_pi<0b0011, "bcs">;
+def BNC     : BCC_pi<0b0100, "bnc">;
+def BSS     : BCC_pi<0b0101, "bss">;
+def BNS     : BCC_pi<0b0110, "bns">;
+def BOV     : BCC_pi<0b0111, "bov">;
+def BNV     : BCC_pi<0b1000, "bnv">;
+def BAB     : BCC_pi<0b1001, "bab">;
+def BBE     : BCC_pi<0b1010, "bbe">;
+def BGE     : BCC_pi<0b1011, "bge">;
+def BLT     : BCC_pi<0b1100, "blt">;
+def BGT     : BCC_pi<0b1101, "bgt">;
+def BLE     : BCC_pi<0b1110, "ble">;
+
+def JAL     : LCC_pi<0b0000, "jal">;
+def BALEQ   : LCC_pi<0b0001, "bleq">;
+def BALNE   : LCC_pi<0b0010, "blne">;
+def BALCS   : LCC_pi<0b0011, "blcs">;
+def BALNC   : LCC_pi<0b0100, "blnc">;
+def BALSS   : LCC_pi<0b0101, "blss">;
+def BALNS   : LCC_pi<0b0110, "blns">;
+def BALOV   : LCC_pi<0b0111, "blov">;
+def BALNV   : LCC_pi<0b1000, "blnv">;
+def BALAB   : LCC_pi<0b1001, "blab">;
+def BALBE   : LCC_pi<0b1010, "blbe">;
+def BALGE   : LCC_pi<0b1011, "blge">;
+def BALLT   : LCC_pi<0b1100, "bllt">;
+def BALGT   : LCC_pi<0b1101, "blgt">;
+def BALLE   : LCC_pi<0b1110, "blle">;
