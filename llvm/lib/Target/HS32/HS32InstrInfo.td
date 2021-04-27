@@ -14,11 +14,13 @@ def uimm16 : Operand<i32> {
 
 def simm16 : Operand<i32> {
     let ParserMatchClass = SImmAsmOperand<16>;
+    let DecoderMethod = "decodeSImmOperand<16>";
 }
 
 def simm16offset : Operand<i32> {
     let ParserMatchClass = SImmAsmOperand<16>;
     let PrintMethod = "printSimmOffsetArg";
+    let DecoderMethod = "decodeSImmOperand<16>";
 }
 
 //===----------------------------------------------------------------------===//
@@ -31,22 +33,24 @@ def ILDR : HSInstTypeI<{0b000, 0b10, 0b100},
     let mayLoad = true;
 }
 
-def RLDR : HSInstTypeR<{0b000, 0b10, 0b000},
+def RLDR : HSInstTypeR<{0b000, 0b10, 0b001},
                        (outs GPR:$rd), (ins GPR:$rm, GPR:$rn),
                        "ldr\t$rd, [${rm}+${rn}]", []> {
     let mayLoad = true;
+    let sh = 0;
 }
 
-def ISTR : HSInstTypeI<{0b000, 0b10, 0b100},
+def ISTR : HSInstTypeI<{0b001, 0b10, 0b100},
                        (outs ), (ins GPR:$rm, simm16offset:$imm16, GPR:$rd),
                        "str\t[${rm}${imm16}], $rd", []> {
     let mayStore = true;
 }
 
-def RSTR : HSInstTypeR<{0b000, 0b10, 0b000},
+def RSTR : HSInstTypeR<{0b001, 0b10, 0b001},
                        (outs ), (ins GPR:$rm, GPR:$rn, GPR:$rd),
                        "str\t[${rm}+${rn}], $rd", []> {
     let mayStore = true;
+    let sh = 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -54,11 +58,11 @@ def RSTR : HSInstTypeR<{0b000, 0b10, 0b000},
 //===----------------------------------------------------------------------===//
 
 def RMOV : HSInstTypeR<{0b001, 0b00, 0b000},
-                       (outs GPR:$rd), (ins GPR:$rm, GPR:$rn),
-                       "mov \t$rd, $rm, $rn", []>;
+                       (outs GPR:$rd), (ins GPR:$rn),
+                       "mov \t$rd, $rn", []> { let sh = 0; let rm = 0; }
 def IMOV : HSInstTypeI<{0b001, 0b00, 0b100},
-                       (outs GPR:$rd), (ins GPR:$rm, uimm16:$imm16),
-                       "mov \t$rd, $rm, $imm16", []>;
+                       (outs GPR:$rd), (ins uimm16:$imm16),
+                       "mov \t$rd, $imm16", []> { let rm = 0; }
 
 //===----------------------------------------------------------------------===//
 // ALU instructions
@@ -76,7 +80,7 @@ class ALU_rr<bits<3> family, bits<3> var, string opcodestr>
         {family, 0b00, var},
         (outs GPR:$rd), (ins GPR:$rm, GPR:$rn),
         opcodestr#"\t$rd, $rm, $rn", []
-    > { }
+    > { let sh = 0; }
 
 def RADD    : ALU_rr<0b010, 0b000, "add">;
 def IADD    : ALU_ri<0b010, 0b100, "add">;
@@ -110,14 +114,14 @@ class CMP_ri<bits<3> family, bits<3> var, string opcodestr>
         {family, 0b01, var},
         (outs ), (ins GPR:$rm, uimm16:$imm16),
         opcodestr#"\t$rm, $imm16", []
-    > { }
+    > { let rd = 0; }
 
 class CMP_rr<bits<3> family, bits<3> var, string opcodestr>
     : HSInstTypeR<
         {family, 0b01, var},
         (outs ), (ins GPR:$rm, GPR:$rn),
         opcodestr#"\t$rm, $rn", []
-    > { }
+    > { let sh = 0; let rd = 0; }
 
 def RCMP    : CMP_rr<0b011, 0b000, "cmp">;
 def ICMP    : CMP_ri<0b011, 0b100, "cmp">;
@@ -132,12 +136,12 @@ class BCC_pi<bits<4> cond, string opcodestr>
     : HSInstTypeI<
         {0b0101, cond}, (outs ), (ins simm16:$imm16),
         opcodestr#"\t$imm16", []
-    > { }
+    > { let rd = 0; let rm = 0; }
 class LCC_pi<bits<4> cond, string opcodestr>
     : HSInstTypeI<
-        {0b0110, cond}, (outs ), (ins simm16:$imm16),
+        {0b0111, cond}, (outs ), (ins simm16:$imm16),
         opcodestr#"\t$imm16", []
-    > { }
+    > { let rd = 0; let rm = 0; }
 
 def JMP     : BCC_pi<0b0000, "jmp">;
 def BEQ     : BCC_pi<0b0001, "beq">;

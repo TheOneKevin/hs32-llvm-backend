@@ -14,6 +14,7 @@ class HSInst<dag outs, dag ins, string asmstr, list<dag> pattern>
     let Namespace = "HS32";
     let AsmString = asmstr;
     let Pattern = pattern;
+    field bits<32> SoftFail = 0;
     dag OutOperandList = outs;
     dag InOperandList = ins;
 }

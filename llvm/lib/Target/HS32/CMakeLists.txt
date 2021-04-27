@@ -4,10 +4,12 @@ set(LLVM_TARGET_DEFINITIONS HS32.td)
 
 tablegen(LLVM HS32GenAsmMatcher.inc         -gen-asm-matcher)
 tablegen(LLVM HS32GenAsmWriter.inc          -gen-asm-writer)
+tablegen(LLVM HS32GenDisassemblerTables.inc -gen-disassembler)
 tablegen(LLVM HS32GenRegisterInfo.inc       -gen-register-info)
 tablegen(LLVM HS32GenInstrInfo.inc          -gen-instr-info)
 tablegen(LLVM HS32GenSubtargetInfo.inc      -gen-subtarget)
 tablegen(LLVM HS32GenMCCodeEmitter.inc      -gen-emitter)
+tablegen(LLVM HS32GenSubtargetInfo.inc      -gen-subtarget)
 
 add_public_tablegen_target(HS32CommonTableGen)
 
@@ -34,3 +36,4 @@ add_llvm_target(HS32CodeGen
 add_subdirectory(AsmParser)
 add_subdirectory(TargetInfo)
 add_subdirectory(MCTargetDesc)
+add_subdirectory(Disassembler)
