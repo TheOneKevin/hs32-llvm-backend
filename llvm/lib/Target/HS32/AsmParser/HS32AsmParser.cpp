@@ -57,9 +57,9 @@ private:
 
 protected:
   bool ParseOperand(OperandVector &Operands);
-  unsigned ParseRegisterName();
-  bool ParseExpression(const MCExpr *&Eval);
-  bool ParseMemory(OperandVector &Operands, SMLoc &S, SMLoc &E);
+  bool ParseExpression(OperandVector &Operands);
+  bool ParseMemory(OperandVector &Operands);
+  bool tryParseRegisterName(unsigned &RegNo);
 
 public:
   enum HS32MatchResultTy {
@@ -212,7 +212,7 @@ bool HS32AsmParser::invalidOperand(SMLoc const &Loc,
 // </editor-fold>
 
 //===----------------------------------------------------------------------===//
-// HS32AsmParser method implementation
+// Main parser code
 //===----------------------------------------------------------------------===//
 // <editor-fold desc="">
 
@@ -220,44 +220,29 @@ bool HS32AsmParser::invalidOperand(SMLoc const &Loc,
 #define GET_MATCHER_IMPLEMENTATION
 #include "HS32GenAsmMatcher.inc"
 
-OperandMatchResultTy HS32AsmParser::tryParseRegister(unsigned &RegNo,
-                                                     SMLoc &StartLoc,
-                                                     SMLoc &EndLoc) {
-  const AsmToken &Tok = Parser.getTok();
-  StartLoc = Tok.getLoc();
-  EndLoc = Tok.getEndLoc();
-
-  if (Tok.isNot(AsmToken::Identifier))
-    return MatchOperand_NoMatch;
-
-  unsigned RegNum = ParseRegisterName();
-  if (RegNum == HS32::NoRegAltName)
-    return MatchOperand_NoMatch;
-  getLexer().Lex();
-  RegNo = RegNum;
-  return MatchOperand_Success;
-}
-
-unsigned HS32AsmParser::ParseRegisterName() {
+bool HS32AsmParser::tryParseRegisterName(unsigned &RegNo) {
   const AsmToken &Tok = Parser.getTok();
   StringRef Name = Tok.getString();
-  unsigned RegNum = MatchRegisterName(Name);
-  if (RegNum == HS32::NoRegister) {
-    return MatchRegisterAltName(Name);
+  RegNo = MatchRegisterName(Name);
+  if (RegNo == HS32::NoRegister) {
+    RegNo = MatchRegisterAltName(Name);
+    if(RegNo == HS32::NoRegAltName) {
+      return true;
+    }
   }
-  return RegNum;
-}
-
-bool HS32AsmParser::ParseRegister(unsigned &RegNo,
-                                  SMLoc &StartLoc, SMLoc &EndLoc) {
-  if(tryParseRegister(RegNo, StartLoc, EndLoc))
-    return TokError("invalid register name");
+  getLexer().Lex(); // consume name on success
   return false;
 }
 
-bool HS32AsmParser::ParseExpression(const MCExpr *&EVal) {
-  // TODO: Handle more complex cases
-  return Parser.parseExpression(EVal);
+bool HS32AsmParser::ParseExpression(OperandVector &Operands) {
+  const MCExpr* EVal;
+  const SMLoc StartLoc = Parser.getTok().getLoc();
+  const SMLoc EndLoc = Parser.getTok().getEndLoc();
+  if(!Parser.parseExpression(EVal)) {
+    Operands.push_back(HS32Operand::CreateImm(EVal, StartLoc, EndLoc));
+    return false;
+  }
+  return true;
 }
 
 bool HS32AsmParser::ParseDirective(AsmToken DirectiveID) {
@@ -265,10 +250,10 @@ bool HS32AsmParser::ParseDirective(AsmToken DirectiveID) {
   return true;
 }
 
-bool HS32AsmParser::ParseMemory(OperandVector &Operands,
-                                SMLoc& StartLoc, SMLoc& EndLoc) {
+bool HS32AsmParser::ParseMemory(OperandVector &Operands) {
   unsigned Rm, Rn;
-  const MCExpr *EVal;
+  SMLoc StartLoc = Parser.getTok().getLoc();
+  SMLoc EndLoc = Parser.getTok().getEndLoc();
   SMLoc Arg1Loc, OpLoc, Arg2Loc;
 
   // Consume '['
@@ -298,33 +283,32 @@ bool HS32AsmParser::ParseMemory(OperandVector &Operands,
   // Consume operator
   getLexer().Lex();
 
-  if(!tryParseRegister(Rn, Arg2Loc, EndLoc)
-     && Op.getKind() == AsmToken::Plus) {
+  // Push beginning of the operand
+  Operands.push_back(HS32Operand::CreateToken("[", StartLoc));
+  Operands.push_back(HS32Operand::CreateReg(Rm, Arg1Loc, EndLoc));
+
+  // Parse the rest of the operand
+  if(!tryParseRegisterName(Rn) && Op.getKind() == AsmToken::Plus) {
     if(getLexer().getKind() != AsmToken::RBrac)
       return Error(EndLoc, "malformed memory reference, expecting ']'");
     // Consume ']'
     getLexer().Lex();
     // Push operands
-    Operands.push_back(HS32Operand::CreateToken("[", StartLoc));
-    Operands.push_back(HS32Operand::CreateReg(Rm, Arg1Loc, EndLoc));
     Operands.push_back(HS32Operand::CreateToken("+", OpLoc));
     Operands.push_back(HS32Operand::CreateReg(Rn, Arg2Loc, EndLoc));
     Operands.push_back(HS32Operand::CreateToken("]", EndLoc));
     return false;
   }
 
-  // Add back operator (for signed imm)
+  // Add back the operator (for signed imm)
   getLexer().UnLex(Op);
 
-  if(!ParseExpression(EVal)) {
+  if(!ParseExpression(Operands)) {
     if(getLexer().getKind() != AsmToken::RBrac)
       return Error(EndLoc, "malformed memory reference, expecting ']'");
     // Consume ']'
     getLexer().Lex();
     // Push operands
-    Operands.push_back(HS32Operand::CreateToken("[", StartLoc));
-    Operands.push_back(HS32Operand::CreateReg(Rm, Arg1Loc, EndLoc));
-    Operands.push_back(HS32Operand::CreateImm(EVal, OpLoc, EndLoc));
     Operands.push_back(HS32Operand::CreateToken("]", EndLoc));
     return false;
   }
@@ -333,22 +317,20 @@ bool HS32AsmParser::ParseMemory(OperandVector &Operands,
 }
 
 bool HS32AsmParser::ParseOperand(OperandVector &Operands) {
-  SMLoc S = Parser.getTok().getLoc();
-  SMLoc E = SMLoc::getFromPointer(S.getPointer() - 1);
+  SMLoc StartLoc = Parser.getTok().getLoc();
+  SMLoc EndLoc = Parser.getTok().getEndLoc();
 
   // First, parse register
   unsigned RegNo;
-  if (tryParseRegister(RegNo, S, E) == MatchOperand_Success) {
-    Operands.push_back(HS32Operand::CreateReg(RegNo, S, E));
+  if (!tryParseRegisterName(RegNo)) {
+    Operands.push_back(HS32Operand::CreateReg(RegNo, StartLoc, EndLoc));
     return false;
   }
 
   // Second, parse expression
-  const MCExpr *EVal;
-
   switch (getLexer().getKind()) {
     case AsmToken::LBrac:
-      return ParseMemory(Operands, S, E);
+      return ParseMemory(Operands);
     case AsmToken::Identifier:
     case AsmToken::LParen:
     case AsmToken::Plus:
@@ -358,18 +340,14 @@ bool HS32AsmParser::ParseOperand(OperandVector &Operands) {
     case AsmToken::Dollar:
     case AsmToken::Exclaim:
     case AsmToken::Tilde:
-      if (!ParseExpression(EVal)) {
-        break;
+      if (!ParseExpression(Operands)) {
+        return false;
       }
-      // clang-tidy complains with LLVM_FALLTHROUGH :(
-      return Error(S, "unknown operand");
+      break;
     default:
-      return Error(S, "unknown operand");
+      break;
   }
-
-  // This is an expression
-  Operands.push_back(HS32Operand::CreateImm(EVal, S, E));
-  return false;
+  return Error(StartLoc, "unknown operand");
 }
 
 bool HS32AsmParser::ParseInstruction(ParseInstructionInfo &Info,
@@ -401,6 +379,32 @@ bool HS32AsmParser::ParseInstruction(ParseInstructionInfo &Info,
   }
 
   getParser().Lex(); // Consume the EndOfStatement.
+  return false;
+}
+// </editor-fold>
+
+//===----------------------------------------------------------------------===//
+// HS32AsmParser methods implementation
+//===----------------------------------------------------------------------===//
+// <editor-fold desc="">
+
+OperandMatchResultTy HS32AsmParser::tryParseRegister(unsigned &RegNo,
+                                                     SMLoc &StartLoc,
+                                                     SMLoc &EndLoc) {
+  const AsmToken &Tok = Parser.getTok();
+  StartLoc = Tok.getLoc();
+  EndLoc = Tok.getEndLoc();
+  if (Tok.isNot(AsmToken::Identifier))
+    return MatchOperand_NoMatch;
+  if(!tryParseRegisterName(RegNo))
+    return MatchOperand_Success;
+  return MatchOperand_NoMatch;
+}
+
+bool HS32AsmParser::ParseRegister(unsigned &RegNo,
+                                  SMLoc &StartLoc, SMLoc &EndLoc) {
+  if(tryParseRegister(RegNo, StartLoc, EndLoc))
+    return TokError("invalid register name");
   return false;
 }
 

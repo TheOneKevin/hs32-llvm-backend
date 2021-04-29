@@ -80,9 +80,13 @@ mov r0, 123, r3
 # CHECK: error: invalid operand for instruction
 mov r1, r2, r3
 # CHECK: error: invalid operand for instruction
+mov r21, r2, r3
+# CHECK: error: invalid operand for instruction
 or  123, r5, r4
 # CHECK: error: invalid operand for instruction
 add r4, 456, r4
+# CHECK: error: invalid operand for instruction
+add abcde, r2, r3
 # CHECK: error: invalid operand for instruction
 bic r1, r3, 13, r9
 # CHECK: error: invalid operand for instruction
@@ -92,9 +96,21 @@ cmp 101, r2, r3
 # CHECK: error: invalid operand for instruction
 jmp 132, r2
 
-# Unknown operand
+# Unknown operand/register
 
 # CHECK: error: unknown operand
 bss ,,,,
 # CHECK: error: unknown operand
 xor 1+4*2&5,*(&*&)
+# CHECK: error: invalid register name
+ldr r1, [r21+r2]
+# CHECK: error: invalid register name
+ldr r1, [r18]
+# CHECK: error: immediate must be an integer
+ldr r1, [r2+r22]
+# CHECK: error: invalid register name
+ldr r1, [r24+3]
+# CHECK: error: immediate must be an integer
+mov r12, r19
+# CHECK: error: immediate must be an integer
+add r1, r3, adwf
