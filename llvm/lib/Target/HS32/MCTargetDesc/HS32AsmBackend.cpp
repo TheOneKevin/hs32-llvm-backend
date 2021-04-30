@@ -27,13 +27,13 @@ public:
 
   const MCFixupKindInfo &getFixupKindInfo(MCFixupKind Kind) const override {
     const static MCFixupKindInfo Infos[HS32::NumTargetFixupKinds] = {
+        // order must be as-declared in HS32FixupKinds.h
         // name, offset, size, flags
         { "fixup_hs32_hi",        0, 16, 0 },
         { "fixup_hs32_lo",        0, 16, 0 },
-        { "fixup_hs32_pcrel_hi",  0, 16, 0 },
-        { "fixup_hs32_pcrel_lo",  0, 16, 0 },
-        { "fixup_hs32_branch",    0, 16, 0 },
-        { "fixup_hs32_pcrel",     0, 16, MCFixupKindInfo::FKF_IsPCRel }
+        { "fixup_hs32_pcrel_hi",  0, 16, MCFixupKindInfo::FKF_IsPCRel },
+        { "fixup_hs32_pcrel_lo",  0, 16, MCFixupKindInfo::FKF_IsPCRel },
+        { "fixup_hs32_branch",    0, 16, MCFixupKindInfo::FKF_IsPCRel }
     };
 
     if(Kind < FirstTargetFixupKind)
@@ -121,9 +121,11 @@ void HS32AsmBackend::applyFixup(const MCAssembler &Asm, const MCFixup &Fixup,
   Value <<= Info.TargetOffset;
 
   // Get fixup bytes and offset within fragment
-  unsigned NumBytes = (Info.TargetSize + 7) / 8;
   unsigned Offset = Fixup.getOffset();
+#ifndef NDEBUG
+  unsigned NumBytes = (Info.TargetSize + 7) / 8;
   assert(Offset + NumBytes <= Data.size() && "Invalid fixup offset!");
+#endif
 
   // Apply fixup within the fragment, masking the values in.
   static const unsigned InstrSize = 4;
