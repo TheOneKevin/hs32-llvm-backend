@@ -27,13 +27,13 @@ public:
 
   const MCFixupKindInfo &getFixupKindInfo(MCFixupKind Kind) const override {
     const static MCFixupKindInfo Infos[HS32::NumTargetFixupKinds] = {
+        // order must be as-declared in HS322FixupKinds.h
         // name, offset, size, flags
         { "fixup_hs32_hi",        0, 16, 0 },
         { "fixup_hs32_lo",        0, 16, 0 },
-        { "fixup_hs32_pcrel_hi",  0, 16, 0 },
-        { "fixup_hs32_pcrel_lo",  0, 16, 0 },
-        { "fixup_hs32_branch",    0, 16, 0 },
-        { "fixup_hs32_pcrel",     0, 16, MCFixupKindInfo::FKF_IsPCRel }
+        { "fixup_hs32_pcrel_hi",  0, 16, MCFixupKindInfo::FKF_IsPCRel },
+        { "fixup_hs32_pcrel_lo",  0, 16, MCFixupKindInfo::FKF_IsPCRel },
+        { "fixup_hs32_branch",    0, 16, MCFixupKindInfo::FKF_IsPCRel }
     };
 
     if(Kind < FirstTargetFixupKind)
