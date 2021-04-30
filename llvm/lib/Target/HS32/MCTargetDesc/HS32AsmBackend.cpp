@@ -27,7 +27,7 @@ public:
 
   const MCFixupKindInfo &getFixupKindInfo(MCFixupKind Kind) const override {
     const static MCFixupKindInfo Infos[HS32::NumTargetFixupKinds] = {
-        // order must be as-declared in HS32FixupKinds.h
+        // order must be as-declared in HS322FixupKinds.h
         // name, offset, size, flags
         { "fixup_hs32_hi",        0, 16, 0 },
         { "fixup_hs32_lo",        0, 16, 0 },
