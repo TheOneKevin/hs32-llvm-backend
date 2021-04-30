@@ -135,13 +135,19 @@ def ITST    : CMP_ri<0b100, 0b100, "tst">;
 class BCC_pi<bits<4> cond, string opcodestr>
     : HSInstTypeI<
         {0b0101, cond}, (outs ), (ins simm16:$imm16),
-        opcodestr#"\t$imm16", []
-    > { let rd = 0; let rm = 0; }
+        opcodestr#"\t$imm16", []> {
+    let rd = 0;
+    let rm = 0;
+    let TSFlags{0} = 1;
+}
 class LCC_pi<bits<4> cond, string opcodestr>
     : HSInstTypeI<
         {0b0111, cond}, (outs ), (ins simm16:$imm16),
-        opcodestr#"\t$imm16", []
-    > { let rd = 0; let rm = 0; }
+        opcodestr#"\t$imm16", []> {
+    let rd = 0;
+    let rm = 0;
+    let TSFlags{0} = 1;
+}
 
 def JMP     : BCC_pi<0b0000, "jmp">;
 def BEQ     : BCC_pi<0b0001, "beq">;

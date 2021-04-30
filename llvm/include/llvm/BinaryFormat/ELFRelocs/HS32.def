@@ -1,0 +1,10 @@
+#ifndef ELF_RELOC
+#error "ELF_RELOC must be defined"
+#endif
+
+ELF_RELOC(R_HS32_NONE,      0)  // No relocation
+ELF_RELOC(R_HS32_HI,        1)  // hi
+ELF_RELOC(R_HS32_LO,        2)  // lo
+ELF_RELOC(R_HS32_PCREL_LO,  3)  // pcrel_lo
+ELF_RELOC(R_HS32_PCREL_HI,  4)  // pcrel_hi
+ELF_RELOC(R_HS32_BRANCH,    5)  // pcrel within branch

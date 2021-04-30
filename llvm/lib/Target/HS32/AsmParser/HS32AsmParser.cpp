@@ -1,4 +1,5 @@
 #include "MCTargetDesc/HS32MCTargetDesc.h"
+#include "MCTargetDesc/HS32MCExpr.h"
 #include "TargetInfo/HS32TargetInfo.h"
 
 #include "llvm/ADT/APInt.h"
@@ -54,10 +55,13 @@ private:
   bool missingFeature(SMLoc const &Loc, uint64_t const &ErrorInfo);
   bool invalidOperand(SMLoc const &Loc, OperandVector const &Operands,
                       uint64_t const &ErrorInfo);
+  bool invalidImmediate(OperandVector const &Operands, uint64_t ErrorInfo,
+                        bool Signed, unsigned Bits);
 
 protected:
   bool ParseOperand(OperandVector &Operands);
   bool ParseExpression(OperandVector &Operands);
+  bool ParseModifier(OperandVector &Operands);
   bool ParseMemory(OperandVector &Operands);
   bool tryParseRegisterName(unsigned &RegNo);
 
@@ -104,6 +108,9 @@ public:
 
   SMLoc Start, End;
 
+private:
+  bool isValidModifierExpr(const MCExpr *Expr) const;
+
 public:
   bool isToken() const override { return Kind == k_Token; }
   bool isImm() const override { return Kind == k_Immediate; }
@@ -120,11 +127,15 @@ public:
   }
 
   bool isUImm16() const {
-    return isConstantImm() && isUInt<16>(getConstantImm());
+    if(!isImm()) return false;
+    return isValidModifierExpr(getImm()) ||
+           (isConstantImm() && isUInt<16>(getConstantImm()));
   }
 
   bool isSImm16() const {
-    return isConstantImm() && isInt<16>(getConstantImm());
+    if(!isImm()) return false;
+    return isValidModifierExpr(getImm()) ||
+           (isConstantImm() && isInt<16>(getConstantImm()));
   }
 
   void addRegOperands(MCInst &Inst, unsigned N) const {
@@ -177,7 +188,6 @@ public:
   }
 };
 
-
 } // namespace
 
 //===----------------------------------------------------------------------===//
@@ -209,6 +219,30 @@ bool HS32AsmParser::invalidOperand(SMLoc const &Loc,
   return Error(ErrorLoc, "invalid operand for instruction");
 }
 
+bool HS32AsmParser::invalidImmediate(OperandVector const &Operands,
+                                     uint64_t ErrorInfo,
+                                     bool Signed, unsigned Bits) {
+  auto Op = (HS32Operand const &) *Operands[ErrorInfo];
+  SMLoc ErrorLoc = Op.Start;
+  // Different error messages for constants vs. modifiers
+  if(Op.isConstantImm()) {
+    int64_t Upper = 0, Lower = 0;
+    if(Signed)
+      Upper = maxIntN(Bits), Lower = minIntN(Bits);
+    else
+      Upper = maxUIntN(Bits), Lower = 0;
+    return Error(ErrorLoc, "immediate must be an integer within ["
+                           + Twine(Lower) + ", " + Twine(Upper) + "]");
+  }
+  return Error(ErrorLoc, "malformed immediate expression");
+}
+
+bool HS32Operand::isValidModifierExpr(const MCExpr *Expr) const {
+  // TODO: More robust features. For now, we restrict this to
+  //       single fixups only - no symbolrefs.
+  return isa<HS32MCExpr>(Expr) || Expr->getKind() == MCExpr::SymbolRef;
+}
+
 // </editor-fold>
 
 //===----------------------------------------------------------------------===//
@@ -238,11 +272,45 @@ bool HS32AsmParser::ParseExpression(OperandVector &Operands) {
   const MCExpr* EVal;
   const SMLoc StartLoc = Parser.getTok().getLoc();
   const SMLoc EndLoc = Parser.getTok().getEndLoc();
+  // Assume head of expression is '%', i.e., no +%hi(..) or -%lo(..)
+  // we will deal with the other cases during error checking
+  if(getLexer().is(AsmToken::Percent)) {
+    return ParseModifier(Operands);
+  }
+  // SymbolRefs and constants are dropped down to here
   if(!Parser.parseExpression(EVal)) {
     Operands.push_back(HS32Operand::CreateImm(EVal, StartLoc, EndLoc));
     return false;
   }
   return true;
+}
+
+bool HS32AsmParser::ParseModifier(OperandVector &Operands) {
+  const SMLoc StartLoc = Parser.getTok().getLoc();
+  SMLoc EndLoc = Parser.getTok().getEndLoc();
+  // Consume '%'
+  Parser.Lex();
+  // Parse modifier and expression
+  if(Parser.getTok().is(AsmToken::Identifier) &&
+     getLexer().peekTok().is(AsmToken::LParen)) {
+    StringRef ModifierName = Parser.getTok().getString();
+    HS32MCExpr::VariantKind Kind = HS32MCExpr::getKindByName(ModifierName);
+    if(Kind == HS32MCExpr::VK_HS32_None) {
+      return Error(EndLoc, "unknown modifier name");
+    }
+    // Consume modifier and '('
+    Parser.Lex();
+    Parser.Lex();
+    // Parse expression within ()
+    const MCExpr *Expr;
+    if(Parser.parseParenExpression(Expr, EndLoc)) {
+      return Error(EndLoc, "bad modifier subexpression");
+    }
+    Operands.push_back(HS32Operand::CreateImm(
+        HS32MCExpr::create(Kind, Expr, false, getContext()), StartLoc, EndLoc));
+    return false;
+  }
+  return Error(EndLoc, "expected modifier and '('");
 }
 
 bool HS32AsmParser::ParseDirective(AsmToken DirectiveID) {
@@ -264,7 +332,7 @@ bool HS32AsmParser::ParseMemory(OperandVector &Operands) {
   ParseRegister(Rm, StartLoc, EndLoc);
 
   // If this is [reg], inject +0]
-  if(getLexer().getKind() == AsmToken::RBrac) {
+  if(getLexer().is(AsmToken::RBrac)) {
     // Consume ']'
     getLexer().Lex();
     // Inject '+0]'
@@ -275,7 +343,7 @@ bool HS32AsmParser::ParseMemory(OperandVector &Operands) {
 
   // Parse operator
   const auto Op = getLexer().getTok();
-  if(Op.getKind() != AsmToken::Plus && Op.getKind() != AsmToken::Minus)
+  if(Op.isNot(AsmToken::Plus) && Op.isNot(AsmToken::Minus))
     return Error(EndLoc, "malformed memory reference, expecting '+' or '-'");
   OpLoc = getLexer().getLoc();
   Arg2Loc = SMLoc::getFromPointer(OpLoc.getPointer() + 1);
@@ -288,8 +356,8 @@ bool HS32AsmParser::ParseMemory(OperandVector &Operands) {
   Operands.push_back(HS32Operand::CreateReg(Rm, Arg1Loc, EndLoc));
 
   // Parse the rest of the operand
-  if(!tryParseRegisterName(Rn) && Op.getKind() == AsmToken::Plus) {
-    if(getLexer().getKind() != AsmToken::RBrac)
+  if(!tryParseRegisterName(Rn) && Op.is(AsmToken::Plus)) {
+    if(getLexer().isNot(AsmToken::RBrac))
       return Error(EndLoc, "malformed memory reference, expecting ']'");
     // Consume ']'
     getLexer().Lex();
@@ -301,10 +369,14 @@ bool HS32AsmParser::ParseMemory(OperandVector &Operands) {
   }
 
   // Add back the operator (for signed imm)
-  getLexer().UnLex(Op);
+  if(getLexer().isNot(AsmToken::Percent)) {
+    getLexer().UnLex(Op);
+  } else if(Op.isNot(AsmToken::Plus)) {
+    return Error(OpLoc, "bad modifier expression, only '+' supported");
+  }
 
   if(!ParseExpression(Operands)) {
-    if(getLexer().getKind() != AsmToken::RBrac)
+    if(getLexer().isNot(AsmToken::RBrac))
       return Error(EndLoc, "malformed memory reference, expecting ']'");
     // Consume ']'
     getLexer().Lex();
@@ -331,6 +403,8 @@ bool HS32AsmParser::ParseOperand(OperandVector &Operands) {
   switch (getLexer().getKind()) {
     case AsmToken::LBrac:
       return ParseMemory(Operands);
+
+    case AsmToken::Percent:
     case AsmToken::Identifier:
     case AsmToken::LParen:
     case AsmToken::Plus:
@@ -416,8 +490,8 @@ bool HS32AsmParser::MatchAndEmitInstruction(SMLoc Loc, unsigned int &Opcode,
   switch(MatchInstructionImpl(Operands, Inst, ErrorInfo, MatchingInlineAsm)) {
     case Match_Success:         return emit(Inst, Loc, Out);
     case Match_MissingFeature:  return missingFeature(Loc, ErrorInfo);
-    case Match_InvalidUImm16:   return Error(Loc, "immediate must be an integer within [0, 65535]");
-    case Match_InvalidSImm16:   return Error(Loc, "immediate must be an integer within [-32768, 32767]");
+    case Match_InvalidUImm16:   return invalidImmediate(Operands, ErrorInfo, false, 16);
+    case Match_InvalidSImm16:   return invalidImmediate(Operands, ErrorInfo, true, 16);
     case Match_InvalidOperand:  return invalidOperand(Loc, Operands, ErrorInfo);
     case Match_MnemonicFail:    return Error(Loc, "invalid instruction");
     default:                    return true;

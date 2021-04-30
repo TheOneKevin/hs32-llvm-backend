@@ -3,6 +3,10 @@
 # RUN: llvm-mc -filetype=obj -triple hs32 < %s \
 # RUN:     | llvm-objdump -d - | FileCheck -check-prefix=CHECK-INST %s
 
+# Check prefixes
+# CHECK      - check encoding
+# CHECK-INST - check instruction printout
+
 # Test ldr and str operations
 
 # CHECK-INST: ldr r1, [r2]
@@ -72,7 +76,6 @@ tst lr, 1<<9
 # CHECK-INST: tst sp, r2
 # CHECK: encoding: [0x88,0x0d,0x20,0x00]
 tst sp, r2
-
 # CHECK-INST: jmp 0
 # CHECK: encoding: [0x50,0x00,0x00,0x00]
 jmp 0
@@ -82,4 +85,3 @@ jmp -1000
 # CHECK-INST: jal -4682
 # CHECK: encoding: [0x70,0x00,0xed,0xb6]
 jal -4938 + 0x100
-

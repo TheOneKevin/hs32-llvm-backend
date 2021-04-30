@@ -1,4 +1,10 @@
 # RUN: not llvm-mc --triple hs32 %s 2>&1 | FileCheck %s
+# RUN: not llvm-mc --triple hs32 %s --show-encoding --fatal-warnings 2>&1 \
+# RUN:         | FileCheck -check-prefixes=CHECK-ENC %s
+
+# Check prefixes
+# CHECK     - regular check error
+# CHECK-ENC - check error + warnings during encoding
 
 # Out of bounds check
 
@@ -43,6 +49,19 @@ ldr [r0+r9], r1
 # CHECK: error: unknown token in expression
 # CHECK: error: malformed memory reference
 ldr r3, [r1-r0]
+# CHECK: error: invalid register name
+ldr r1, [r21+r2]
+# CHECK: error: invalid register name
+ldr r1, [r18]
+# CHECK: error: invalid register name
+str [r24+3], r1
+# CHECK: error: invalid register name
+str [%hi(foo)+3], r1
+# CHECK: error: bad modifier expression, only '+' supported
+str [r0-%hi(foo)+3], r1
+# CHECK: error: bad modifier subexpression
+# CHECK: error: malformed memory reference
+ldr r1, [r1+%hi(foo)+%lo(bar)]
 
 # Arity error
 
@@ -88,6 +107,12 @@ add r4, 456, r4
 # CHECK: error: invalid operand for instruction
 add abcde, r2, r3
 # CHECK: error: invalid operand for instruction
+addc r4, [r2], r3
+# CHECK: error: invalid operand for instruction
+and r4, %hi(foo),r4
+# CHECK: error: invalid operand for instruction
+xor r4, [r1], %hi(foo)
+# CHECK: error: invalid operand for instruction
 bic r1, r3, 13, r9
 # CHECK: error: invalid operand for instruction
 cmp r1, r2, r3
@@ -96,21 +121,46 @@ cmp 101, r2, r3
 # CHECK: error: invalid operand for instruction
 jmp 132, r2
 
+# Malformed expressions
+
+# CHECK-ENC: error: symbolref fixups outside branch is unsupported
+mov r12, r19
+# CHECK-ENC: error: symbolref fixups outside branch is unsupported
+add r1, r3, adwf
+# CHECK-ENC: error: using pcrel in branch is dangerous
+jmp %pcrel(foo)
+
+# CHECK: error: malformed immediate expression
+ldr r1, [r2+r22]
+# CHECK: error: unknown token in expression
+# CHECK: error: bad modifier subexpression
+# CHECK: error: unknown operand
+mov r5, %hi(foo)+%lo(bar)
+# CHECK: error: unknown token in expression
+# CHECK: error: unknown operand
+mov r1, 2+%hi(foo)
+# CHECK: error: unknown token in expression
+# CHECK: error: unknown operand
+mov r1, -%hi(foo)
+# CHECK: error: unknown token in expression
+# CHECK: error: unknown operand
+mov r1, +%hi(foo)
+
 # Unknown operand/register
 
 # CHECK: error: unknown operand
 bss ,,,,
 # CHECK: error: unknown operand
 xor 1+4*2&5,*(&*&)
-# CHECK: error: invalid register name
-ldr r1, [r21+r2]
-# CHECK: error: invalid register name
-ldr r1, [r18]
-# CHECK: error: immediate must be an integer
-ldr r1, [r2+r22]
-# CHECK: error: invalid register name
-ldr r1, [r24+3]
-# CHECK: error: immediate must be an integer
-mov r12, r19
-# CHECK: error: immediate must be an integer
-add r1, r3, adwf
+# CHECK: error: unknown operand
+rsubc r1, r2, %%%foo(bar)
+# CHECK: error: unknown operand
+rsubc r1, %%%foo(bar), r2
+# CHECK: error: unknown modifier name
+str [r1+%bar(foo)], r2
+# CHECK: error: unknown modifier name
+mov r1, %bar(foo)
+# CHECK: error: malformed memory reference
+ldr r0, [r1+%%%hi(foo)]
+# CHECK: error: malformed memory reference
+ldr r0, [r1+%%%hi(foo)]

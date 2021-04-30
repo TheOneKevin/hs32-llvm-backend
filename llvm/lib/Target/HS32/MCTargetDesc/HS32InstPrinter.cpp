@@ -28,14 +28,22 @@ void HS32InstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
 
 void HS32InstPrinter::printSimmOffsetArg(const MCInst *MI, unsigned OpNo,
                                          raw_ostream &O) {
-  signed Val = static_cast<signed>(MI->getOperand(OpNo).getImm());
-  if(Val == 0) {
-    return;
-  }
-  if(Val > 0) {
+  const MCOperand &Op = MI->getOperand(OpNo);
+  // Check if is constant, otherwise probably a modifier expression
+  if(Op.isImm()) {
+    signed Val = static_cast<signed>(Op.getImm());
+    if (Val == 0) {
+      return;
+    }
+    if (Val > 0) {
+      O << "+";
+    }
+    O << Val;
+  } else {
+    // We only support positive offset for now
     O << "+";
+    O << *Op.getExpr();
   }
-  O << Val;
 }
 
 } // end namespace llvm
