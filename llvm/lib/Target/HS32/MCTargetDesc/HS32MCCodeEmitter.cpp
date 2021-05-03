@@ -41,6 +41,11 @@ public:
                              SmallVectorImpl<MCFixup> &Fixups,
                              const MCSubtargetInfo &STI) const;
 
+  // getShiftOpValue - Returns the encoded rn shifted (rnsh) value
+  unsigned getShiftOpValue(const MCInst &MI, unsigned OpIdx,
+                           SmallVectorImpl<MCFixup> &Fixups,
+                           const MCSubtargetInfo &STI) const;
+
   void encodeInstruction(const MCInst &MI, raw_ostream &OS,
                          SmallVectorImpl<MCFixup> &Fixups,
                          const MCSubtargetInfo &STI) const override;
@@ -53,6 +58,15 @@ MCCodeEmitter *llvm::createHS32MCCodeEmitter(const MCInstrInfo &MCII,
                                              const MCRegisterInfo &MRI,
                                              MCContext &Ctx) {
   return new HS32MCCodeEmitter(Ctx, MCII);
+}
+
+unsigned HS32MCCodeEmitter::getShiftOpValue(const MCInst &MI, unsigned OpIdx,
+                                            SmallVectorImpl<MCFixup> &Fixups,
+                                            const MCSubtargetInfo &STI) const {
+  const MCOperand &Rn = MI.getOperand(OpIdx);
+  const MCOperand &Shift = MI.getOperand(OpIdx + 1);
+  unsigned RnEnc = Ctx.getRegisterInfo()->getEncodingValue(Rn.getReg());
+  return (RnEnc << 7) | (Shift.getImm() & 127);
 }
 
 unsigned HS32MCCodeEmitter::getMachineOpValue(const MCInst &MI,const MCOperand &MO,

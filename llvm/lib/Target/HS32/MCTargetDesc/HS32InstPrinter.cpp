@@ -1,4 +1,5 @@
 #include "HS32InstPrinter.h"
+#include "HS32BaseInfo.h"
 
 #define DEBUG_TYPE "asm-printer"
 
@@ -26,8 +27,8 @@ void HS32InstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
   }
 }
 
-void HS32InstPrinter::printSimmOffsetArg(const MCInst *MI, unsigned OpNo,
-                                         raw_ostream &O) {
+void HS32InstPrinter::printSimmOffsetOperand(const MCInst *MI, unsigned OpNo,
+                                             raw_ostream &O) {
   const MCOperand &Op = MI->getOperand(OpNo);
   // Check if is constant, otherwise probably a modifier expression
   if(Op.isImm()) {
@@ -44,6 +45,17 @@ void HS32InstPrinter::printSimmOffsetArg(const MCInst *MI, unsigned OpNo,
     O << "+";
     O << *Op.getExpr();
   }
+}
+
+void HS32InstPrinter::printShiftOperand(const MCInst *MI, unsigned OpNo,
+                                        raw_ostream &O) {
+  // register shift operand is [reg, imm]
+  // where imm is { value (5 bits), type (2) }
+  const MCOperand &Rn = MI->getOperand(OpNo);
+  unsigned Sh = MI->getOperand(OpNo+1).getImm();
+  HS32II::ShiftTypes Type = static_cast<HS32II::ShiftTypes>(Sh & 0b11);
+  O << getRegisterName(Rn.getReg()) << " "
+    << HS32II::getStringFromShiftType(Type) << " " << (Sh >> 2);
 }
 
 } // end namespace llvm

@@ -12,10 +12,14 @@
 ldr r6, [r3+98743]
 # CHECK: error: immediate must be an integer within [-32768, 32767]
 str [r4-123456], r3
+# CHECK: error: shift amount must be an integer in [0, 31]
+mov r2, r3 srx 32
 # CHECK: error: immediate must be an integer within [0, 65535]
 mov r2, 65536
 # CHECK: error: immediate must be an integer within [0, 65535]
 mov r2, -1
+# CHECK: error: shift amount must be an integer in [0, 31]
+add r2, r4, r3 ror 32
 # CHECK: error: immediate must be an integer within [0, 65535]
 add r5, r2, 65536
 # CHECK: error: immediate must be an integer within [0, 65535]
@@ -91,15 +95,23 @@ ldr r6, [r3], r2
 # CHECK: error: invalid operand for instruction
 ldr r10, r4
 # CHECK: error: invalid operand for instruction
+ldr r10 shr 3, [r4]
+# CHECK: error: invalid operand for instruction
 str r7, [r4]
 # CHECK: error: invalid operand for instruction
 str r1, r3
+# CHECK: error: invalid operand for instruction
+str [r1], r3 ror 3
+# CHECK: error: invalid operand for instruction
+mov r0 shl 23, r2
 # CHECK: error: invalid operand for instruction
 mov r0, 123, r3
 # CHECK: error: invalid operand for instruction
 mov r1, r2, r3
 # CHECK: error: invalid operand for instruction
 mov r21, r2, r3
+# CHECK: error: invalid operand for instruction
+add r1, r0 shl 23, r2
 # CHECK: error: invalid operand for instruction
 or  123, r5, r4
 # CHECK: error: invalid operand for instruction
@@ -121,6 +133,25 @@ cmp 101, r2, r3
 # CHECK: error: invalid operand for instruction
 jmp 132, r2
 
+# CHECK: error: malformed memory reference, expecting '+' or '-'
+ldr r1, [r2 shl 2]
+# CHECK: error: malformed memory reference
+ldr r1, [r2 + shl 2]
+# CHECK: error: malformed memory reference
+ldr r1, [r2 + foo shl 2]
+# CHECK: error: invalid shift type
+ldr r1, [r2 + r3 foo 2]
+# CHECK: error: invalid shift type
+mov r1, r2 foo bar
+# CHECK: error: expected integer here
+mov r1, r3 shl -1
+# CHECK: error: expected integer here
+mov r1, r2 ror foo
+# CHECK: error: unexpected token
+mov r1, 2 shl bar
+# CHECK: error: unexpected token
+mov r1, foo shl bar
+
 # Malformed expressions
 
 # CHECK-ENC: error: symbolref fixups outside branch is unsupported
@@ -129,7 +160,6 @@ mov r12, r19
 add r1, r3, adwf
 # CHECK-ENC: error: using pcrel in branch is dangerous
 jmp %pcrel(foo)
-
 # CHECK: error: malformed immediate expression
 ldr r1, [r2+r22]
 # CHECK: error: unknown token in expression

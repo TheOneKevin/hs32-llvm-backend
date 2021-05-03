@@ -21,6 +21,18 @@ ldr r3, [r2+1-2]
 # CHECK-INST: ldr r5, [r3+r4]
 # CHECK: encoding: [0x11,0x53,0x40,0x00]
 ldr r5, [r3+r4]
+# CHECK-INST: ldr r7, [r1+r6 shl 6]
+# CHECK: encoding: [0x11,0x71,0x63,0x00]
+ldr r7, [r1+r6 shl 6]
+# CHECK-INST: ldr r7, [r1+r6 shr 6]
+# CHECK: encoding: [0x11,0x71,0x63,0x20]
+ldr r7, [r1+r6 shr 6]
+# CHECK-INST: ldr r7, [r1+r6 srx 6]
+# CHECK: encoding: [0x11,0x71,0x63,0x40]
+ldr r7, [r1+r6 srx 6]
+# CHECK-INST: ldr r7, [r1+r6 ror 6]
+# CHECK: encoding: [0x11,0x71,0x63,0x60]
+ldr r7, [r1+r6 ror 6]
 # CHECK-INST: str [r2], r1
 # CHECK: encoding: [0x34,0x12,0x00,0x00]
 str [r2], r1
@@ -33,6 +45,19 @@ str [r3+1+4], r5
 # CHECK-INST: str [r2+r3], r4
 # CHECK: encoding: [0x31,0x42,0x30,0x00]
 str [r2+r3], r4
+# CHECK-INST: str [r2+r5 shl 31], r4
+# CHECK: encoding: [0x31,0x42,0x5f,0x80]
+str [r2+r5 shl 31], r4
+# CHECK-INST: str [r2+r5 shr 31], r4
+# CHECK: encoding: [0x31,0x42,0x5f,0xa0]
+str [r2+r5 shr 31], r4
+# CHECK-INST: str [r2+r5 srx 31], r4
+# CHECK: encoding: [0x31,0x42,0x5f,0xc0]
+str [r2+r5 srx 31], r4
+# CHECK-INST: str [r2+r5 ror 31], r4
+# CHECK: encoding: [0x31,0x42,0x5f,0xe0]
+str [r2+r5 ror 31], r4
+
 
 # Test MOV and ALU
 

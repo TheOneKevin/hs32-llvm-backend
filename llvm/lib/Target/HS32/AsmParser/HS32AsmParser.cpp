@@ -1,6 +1,7 @@
 #include "MCTargetDesc/HS32MCTargetDesc.h"
 #include "MCTargetDesc/HS32MCExpr.h"
 #include "TargetInfo/HS32TargetInfo.h"
+#include "MCTargetDesc/HS32BaseInfo.h"
 
 #include "llvm/ADT/APInt.h"
 #include "llvm/MC/MCContext.h"
@@ -63,6 +64,7 @@ protected:
   bool ParseExpression(OperandVector &Operands);
   bool ParseModifier(OperandVector &Operands);
   bool ParseMemory(OperandVector &Operands);
+  bool ParseRegisterShift(unsigned RegNo, OperandVector &Operands);
   bool tryParseRegisterName(unsigned &RegNo);
 
 public:
@@ -87,22 +89,32 @@ public:
 
 class HS32Operand : public MCParsedAsmOperand {
   typedef MCParsedAsmOperand Base;
-  enum KindTy { k_Token, k_Register, k_Immediate } Kind;
+  enum KindTy { k_Token, k_Register, k_RegisterShifted, k_Immediate } Kind;
 
 public:
   HS32Operand(StringRef Tok, SMLoc const &S)
-      : Base(), Kind(k_Token), Tok(Tok), Start(S), End(S){};
+      : Base(), Kind(k_Token), Tok(Tok), Start(S), End(S) { };
   HS32Operand(unsigned Reg, SMLoc const &S, SMLoc const &E)
-      : Base(), Kind(k_Register), RegImm({Reg, nullptr}), Start(S), End(E){};
+      : Base(), Kind(k_Register), RegImm({Reg, nullptr}), Start(S), End(E) { };
   HS32Operand(MCExpr const *Imm, SMLoc const &S, SMLoc const &E)
-      : Base(), Kind(k_Immediate), RegImm({0, Imm}), Start(S), End(E){};
+      : Base(), Kind(k_Immediate), RegImm({0, Imm}), Start(S), End(E) { };
+  HS32Operand(unsigned Reg, HS32II::ShiftTypes Type, unsigned Value,
+              SMLoc const &S, SMLoc const &E)
+      : Base(), Kind (k_RegisterShifted),
+        RegSh({Reg, Type, Value}), Start(S), End(E) { };
 
   struct RegisterImmediate {
     unsigned Reg;
     MCExpr const *Imm;
   };
+  struct RegisterShifted {
+    unsigned Reg;
+    HS32II::ShiftTypes ShiftType;
+    unsigned ShiftValue;
+  };
   union {
     StringRef Tok;
+    RegisterShifted RegSh;
     RegisterImmediate RegImm;
   };
 
@@ -138,6 +150,11 @@ public:
            (isConstantImm() && isInt<16>(getConstantImm()));
   }
 
+  bool isShiftReg() const {
+    return Kind == k_RegisterShifted &&
+           RegSh.ShiftType != HS32II::ShiftTypes::Invalid;
+  }
+
   void addRegOperands(MCInst &Inst, unsigned N) const {
     assert(N == 1 && "Invalid number of operands!");
     Inst.addOperand(MCOperand::createReg(getReg()));
@@ -151,6 +168,14 @@ public:
       Inst.addOperand(MCOperand::createImm(CE->getValue()));
     else
       Inst.addOperand(MCOperand::createExpr(Expr));
+  }
+
+  void addShiftOperands(MCInst &Inst, unsigned N) const {
+    assert(N == 2 && "Invalid number of operands!");
+    Inst.addOperand(MCOperand::createReg(RegSh.Reg));
+    Inst.addOperand(MCOperand::createImm(
+        (RegSh.ShiftValue << 2)
+        | (unsigned) RegSh.ShiftType));
   }
 
   StringRef getToken() const {
@@ -180,6 +205,13 @@ public:
   static std::unique_ptr<HS32Operand> CreateReg(unsigned RegNum, SMLoc S,
                                                 SMLoc E) {
     return std::make_unique<HS32Operand>(RegNum, S, E);
+  }
+
+  static std::unique_ptr<HS32Operand> CreateRegSh(unsigned RegNum,
+                                                  HS32II::ShiftTypes Type,
+                                                  unsigned Value,
+                                                  SMLoc S, SMLoc E) {
+    return std::make_unique<HS32Operand>(RegNum, Type, Value, S, E);
   }
 
   static std::unique_ptr<HS32Operand> CreateImm(const MCExpr *Val, SMLoc S,
@@ -357,13 +389,15 @@ bool HS32AsmParser::ParseMemory(OperandVector &Operands) {
 
   // Parse the rest of the operand
   if(!tryParseRegisterName(Rn) && Op.is(AsmToken::Plus)) {
+    // Push operands
+    Operands.push_back(HS32Operand::CreateToken("+", OpLoc));
+    Operands.push_back(HS32Operand::CreateReg(Rn, Arg2Loc, EndLoc));
+    ParseRegisterShift(Rn, Operands);
+    // Check closing ']'
     if(getLexer().isNot(AsmToken::RBrac))
       return Error(EndLoc, "malformed memory reference, expecting ']'");
     // Consume ']'
     getLexer().Lex();
-    // Push operands
-    Operands.push_back(HS32Operand::CreateToken("+", OpLoc));
-    Operands.push_back(HS32Operand::CreateReg(Rn, Arg2Loc, EndLoc));
     Operands.push_back(HS32Operand::CreateToken("]", EndLoc));
     return false;
   }
@@ -388,6 +422,32 @@ bool HS32AsmParser::ParseMemory(OperandVector &Operands) {
   return Error(EndLoc, "malformed memory reference");
 }
 
+bool HS32AsmParser::ParseRegisterShift(unsigned RegNo, OperandVector &Operands) {
+  SMLoc StartLoc = Parser.getTok().getLoc();
+  SMLoc EndLoc = Parser.getTok().getEndLoc();
+  if(getLexer().isNot(AsmToken::Identifier))
+    return false;
+  HS32II::ShiftTypes Type = HS32II::getShiftTypeFromString(
+      Parser.getTok().getString());
+  if(Type == HS32II::ShiftTypes::Invalid)
+    return Error(getLexer().getLoc(), "invalid shift type");
+  // Consume shift identifier
+  Parser.Lex();
+  if(getLexer().isNot(AsmToken::Integer))
+    return Error(getLexer().getLoc(), "expected integer here");
+  uint64_t Value = getLexer().getTok().getIntVal();
+  // Consume shift amount
+  Parser.Lex();
+  if(!isUInt<5>(Value))
+    return Error(getLexer().getLoc(),
+                 "shift amount must be an integer in [0, 31]");
+  // Overwrite register operand with registershift operand
+  Operands.pop_back();
+  Operands.push_back(
+      HS32Operand::CreateRegSh(RegNo, Type, Value, StartLoc, EndLoc));
+  return false;
+}
+
 bool HS32AsmParser::ParseOperand(OperandVector &Operands) {
   SMLoc StartLoc = Parser.getTok().getLoc();
   SMLoc EndLoc = Parser.getTok().getEndLoc();
@@ -396,6 +456,7 @@ bool HS32AsmParser::ParseOperand(OperandVector &Operands) {
   unsigned RegNo;
   if (!tryParseRegisterName(RegNo)) {
     Operands.push_back(HS32Operand::CreateReg(RegNo, StartLoc, EndLoc));
+    ParseRegisterShift(RegNo, Operands);
     return false;
   }
 
@@ -403,7 +464,6 @@ bool HS32AsmParser::ParseOperand(OperandVector &Operands) {
   switch (getLexer().getKind()) {
     case AsmToken::LBrac:
       return ParseMemory(Operands);
-
     case AsmToken::Percent:
     case AsmToken::Identifier:
     case AsmToken::LParen:
@@ -414,9 +474,8 @@ bool HS32AsmParser::ParseOperand(OperandVector &Operands) {
     case AsmToken::Dollar:
     case AsmToken::Exclaim:
     case AsmToken::Tilde:
-      if (!ParseExpression(Operands)) {
+      if (!ParseExpression(Operands))
         return false;
-      }
       break;
     default:
       break;

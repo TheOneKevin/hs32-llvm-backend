@@ -69,6 +69,18 @@ static DecodeStatus decodeSImmOperand(MCInst &Inst, uint64_t Imm,
   return MCDisassembler::Success;
 }
 
+static DecodeStatus decodeShiftOperand(MCInst &Inst, uint64_t Rnsh,
+                                       uint64_t Address, const void *Decoder) {
+  unsigned RegNo = (Rnsh & 0b1111'00'00000) >> 7;
+  unsigned Shift = (Rnsh & 0b0000'11'11111);
+  if(DecodeGPRRegisterClass(Inst, RegNo, Address, Decoder)
+      != MCDisassembler::Success) {
+    return MCDisassembler::Fail;
+  }
+  Inst.addOperand(MCOperand::createImm(Shift));
+  return MCDisassembler::Success;
+}
+
 #include "HS32GenDisassemblerTables.inc"
 
 //===----------------------------------------------------------------------===//
@@ -78,10 +90,6 @@ static DecodeStatus decodeSImmOperand(MCInst &Inst, uint64_t Imm,
 #define OP_MASK 0xFF00'0000
 #define RD_MASK 0x00F0'0000
 #define RM_MASK 0x000F'0000
-#define SH_MASK 0x0000'0FFF
-#define OP_F_MASK 0b111'00'000
-#define OP_G_MASK 0b000'11'000
-#define OP_V_MASK 0b000'00'111
 
 DecodeStatus HS32Disassembler::getInstruction(MCInst &Instr, uint64_t &Size,
                                               ArrayRef<uint8_t> Bytes,
@@ -96,34 +104,18 @@ DecodeStatus HS32Disassembler::getInstruction(MCInst &Instr, uint64_t &Size,
 
   // Get opcode and family, group, var
   uint8_t Op = (Insn & OP_MASK) >> 24;
-  uint8_t Opf = (Op & OP_F_MASK) >> 5;
-  uint8_t Opg = (Op & OP_G_MASK) >> 3;
-  uint8_t Opv = (Op & OP_V_MASK);
 
   // Normalize unused fields
-  // TODO: Change when we implement shift
-  // ALU_rr
-  if(Opf >= 0b010 && Opf <= 0b110 && Opg == 0 && (Opv & 0b100) == 0) {
-    Insn = Insn & ~SH_MASK;
-  }
   // BCC_pi and LCC_pi
-  else if((Op & 0xF0) == 0b0101'0000 || (Op & 0xF0) == 0b0111'0000) {
+  if((Op & 0xF0) == 0b0101'0000 || (Op & 0xF0) == 0b0111'0000) {
     Insn = Insn & ~RD_MASK;
     Insn = Insn & ~RM_MASK;
   }
   // All other instructions
   else {
     switch (Op) {
-    // RLDR and RSTR
-    case 0b000'10'001:
-    case 0b001'10'001:
-      Insn = Insn & ~SH_MASK;
-      break;
-
     // RMOV and IMOV
     case 0b001'00'000:
-      Insn = Insn & ~SH_MASK;
-      LLVM_FALLTHROUGH;
     case 0b001'00'100:
       Insn = Insn & ~RM_MASK;
       break;
@@ -131,8 +123,6 @@ DecodeStatus HS32Disassembler::getInstruction(MCInst &Instr, uint64_t &Size,
     // RCMP and RTST
     case 0b011'01'000:
     case 0b100'01'000:
-      Insn = Insn & ~SH_MASK;
-      LLVM_FALLTHROUGH;
     // ICMP and ITST
     case 0b011'01'100:
     case 0b100'01'100:
@@ -140,7 +130,6 @@ DecodeStatus HS32Disassembler::getInstruction(MCInst &Instr, uint64_t &Size,
       break;
     }
   }
-
   // Finally parse
   return decodeInstruction(DecoderTable32, Instr, Insn,
                            Address, this, STI);
