@@ -155,6 +155,12 @@ ASM_FUNCTION_WASM32_RE = re.compile(
     r'^\s*(\.Lfunc_end[0-9]+:\n|end_function)',
     flags=(re.M | re.S))
 
+ASM_FUNCTION_HS32_RE = re.compile(
+    r'^_?(?P<func>[^:]+):[ \t]*#+[ \t]*@"?(?P=func)"?\n'
+    r'(?P<body>.*?)\n'
+    r'^\s*(\.Lfunc_end[0-9]+:\n|end_function)',
+    flags=(re.M | re.S))
+
 SCRUB_X86_SHUFFLES_RE = (
     re.compile(
         r'^(\s*\w+) [^#\n]+#+ ((?:[xyz]mm\d+|mem)( \{%k\d+\}( \{z\})?)? = .*)$',
@@ -343,6 +349,16 @@ def scrub_asm_wasm32(asm, args):
   asm = common.SCRUB_TRAILING_WHITESPACE_RE.sub(r'', asm)
   return asm
 
+def scrub_asm_hs32(asm, args):
+    # Scrub runs of whitespace out of the assembly, but leave the leading
+    # whitespace in place.
+    asm = common.SCRUB_WHITESPACE_RE.sub(r' ', asm)
+    # Expand the tabs used for indentation.
+    asm = string.expandtabs(asm, 2)
+    # Strip trailing whitespace.
+    asm = common.SCRUB_TRAILING_WHITESPACE_RE.sub(r'', asm)
+    return asm
+
 def get_triple_from_march(march):
   triples = {
       'amdgcn': 'amdgcn',
@@ -365,6 +381,7 @@ def get_run_handler(triple):
       'aarch64': (scrub_asm_arm_eabi, ASM_FUNCTION_AARCH64_RE),
       'aarch64-apple-darwin': (scrub_asm_arm_eabi, ASM_FUNCTION_AARCH64_DARWIN_RE),
       'hexagon': (scrub_asm_hexagon, ASM_FUNCTION_HEXAGON_RE),
+      'hs32': (scrub_asm_hs32, ASM_FUNCTION_HS32_RE),
       'r600': (scrub_asm_amdgpu, ASM_FUNCTION_AMDGPU_RE),
       'amdgcn': (scrub_asm_amdgpu, ASM_FUNCTION_AMDGPU_RE),
       'arm': (scrub_asm_arm_eabi, ASM_FUNCTION_ARM_RE),
