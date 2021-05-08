@@ -12,17 +12,17 @@ class ImmOperand<string prefix, int width> : AsmOperandClass {
 class UImmAsmOperand<int width> : ImmOperand<"U", width> { }
 class SImmAsmOperand<int width> : ImmOperand<"S", width> { }
 
-def uimm16 : Operand<i32> {
+def uimm16 : Operand<i32>, ImmLeaf<i32, [{ return isUInt<16>(Imm); }]> {
     let ParserMatchClass = UImmAsmOperand<16>;
 }
 
-def simm16 : Operand<i32> {
+def simm16 : Operand<i32>, ImmLeaf<i32, [{ return isInt<16>(Imm); }]> {
     let ParserMatchClass = SImmAsmOperand<16>;
     let DecoderMethod = "decodeSImmOperand<16>";
 }
 
 // This is same as simm16 with custom PrintMethod
-def simm16offset : Operand<i32> {
+def simm16offset : Operand<i32>, ImmLeaf<i32, [{ return isInt<16>(Imm); }]> {
     let ParserMatchClass = SImmAsmOperand<16>;
     let PrintMethod = "printSimmOffsetOperand";
     let DecoderMethod = "decodeSImmOperand<16>";
@@ -35,7 +35,8 @@ def ShiftRegAsmOperand : AsmOperandClass {
     let DiagnosticType = !strconcat("Invalid", Name);
 }
 
-def shift_rn : Operand<i32> {
+def shift_rn : Operand<i32>,
+               ComplexPattern<i32, 2, "SelectShiftOperand", [shl,srl,sra,rotr]> {
     let ParserMatchClass = ShiftRegAsmOperand;
     let PrintMethod = "printShiftOperand";
     let EncoderMethod = "getShiftOpValue";
@@ -44,11 +45,19 @@ def shift_rn : Operand<i32> {
 }
 
 //===----------------------------------------------------------------------===//
+// Custom DAG node types
+// - See TargetSelectionDAG.td for DAG type descriptions (used by HS32ISD::*)
+//===----------------------------------------------------------------------===//
+
+def HS32Retflag : SDNode<"HS32ISD::RET_FLAG", SDTNone,
+                         [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
+
+//===----------------------------------------------------------------------===//
 // LDR and STR memory instructions
 //===----------------------------------------------------------------------===//
 
-let mayLoad = true in {
-multiclass LDR_op<string opcodestr> {
+let mayLoad = 1 in {
+multiclass LdrOp<string opcodestr> {
     // Imm
     def ri : HSInstTypeI<{0b000, 0b10, 0b100},
         (outs GPR:$rd), (ins GPR:$rm, simm16offset:$imm16),
@@ -60,43 +69,44 @@ multiclass LDR_op<string opcodestr> {
         opcodestr#"\t$rd, [${rm}+${rn}]", []>;
 
     // Reg shifted
-    def rr_sh : HSInstTypeRs<{0b000, 0b10, 0b001},
+    def rsh : HSInstTypeRs<{0b000, 0b10, 0b001},
         (outs GPR:$rd), (ins GPR:$rm, shift_rn:$rnsh),
         opcodestr#"\t$rd, [${rm}+${rnsh}]", []>;
 }}
 
-let mayStore = true in {
-multiclass STR_op<string opcodestr> {
+let mayStore = 1 in {
+multiclass StrOp<string opcodestr> {
     // Imm
     def ri : HSInstTypeI<{0b001, 0b10, 0b100},
-        (outs GPR:$rd), (ins GPR:$rm, simm16offset:$imm16),
+        (outs ), (ins GPR:$rd, GPR:$rm, simm16offset:$imm16),
         opcodestr#"\t[${rm}${imm16}], $rd", []>;
 
     // Reg no shift
     def rr : HSInstTypeR<{0b001, 0b10, 0b001},
-        (outs GPR:$rd), (ins GPR:$rm, GPR:$rn),
+        (outs ), (ins GPR:$rd, GPR:$rm, GPR:$rn),
         opcodestr#"\t[${rm}+${rn}], $rd", []>;
 
     // Reg shifted
-    def rr_sh : HSInstTypeRs<{0b001, 0b10, 0b001},
-        (outs GPR:$rd), (ins GPR:$rm, shift_rn:$rnsh),
+    def rsh : HSInstTypeRs<{0b001, 0b10, 0b001},
+        (outs ), (ins GPR:$rd, GPR:$rm, shift_rn:$rnsh),
         opcodestr#"\t[${rm}+${rnsh}], $rd", []>;
 }}
 
-defm LDR : LDR_op<"ldr">;
-defm STR : STR_op<"str">;
+defm LDR : LdrOp<"ldr">;
+defm STR : StrOp<"str">;
 
 //===----------------------------------------------------------------------===//
 // MOV instructions
 //===----------------------------------------------------------------------===//
 
-// MOV_op - same as ALU_op with rm zeroed
+// MovOp - same as ALUOp with rm zeroed
 let rm = 0 in {
-multiclass MOV_op<bits<3> family, bits<2> var, string opcodestr> {
+multiclass MovOp<bits<3> family, bits<2> var, string opcodestr> {
     // Imm
     def ri : HSInstTypeI<{family, 0b00, 0b1,var},
         (outs GPR:$rd), (ins uimm16:$imm16),
-        opcodestr#"\t$rd, $imm16", []>;
+        opcodestr#"\t$rd, $imm16",
+        [(set GPR:$rd, uimm16:$imm16)]>;
 
     // Reg no shift
     def rr : HSInstTypeR<{family, 0b00, 0b0,var},
@@ -104,12 +114,12 @@ multiclass MOV_op<bits<3> family, bits<2> var, string opcodestr> {
         opcodestr#"\t$rd, $rn", []>;
 
     // Reg shifted
-    def rr_sh : HSInstTypeRs<{family, 0b00, 0b0,var},
+    def rsh : HSInstTypeRs<{family, 0b00, 0b0,var},
         (outs GPR:$rd), (ins shift_rn:$rnsh),
         opcodestr#"\t$rd, $rnsh", []>;
 }}
 
-defm MOV : MOV_op<0b001, 0b00, "mov">;
+defm MOV : MovOp<0b001, 0b00, "mov">;
 
 //===----------------------------------------------------------------------===//
 // ALU instructions
@@ -117,41 +127,51 @@ defm MOV : MOV_op<0b001, 0b00, "mov">;
 
 // Describes binary operations, with reg, imm and reg/sh variants
 // defined as ri, rr and rr_sh.
-multiclass ALU_op<bits<3> family, bits<2> var, string opcodestr> {
+let Defs = [FLAGS] in {
+multiclass ALUOp<bits<3> family, bits<2> var, string opcodestr,
+                 SDPatternOperator opnode> {
     // Reg, Imm
     def ri : HSInstTypeI<{family, 0b00, 0b1,var},
         (outs GPR:$rd), (ins GPR:$rm, uimm16:$imm16),
-        opcodestr#"\t$rd, $rm, $imm16", []>;
+        opcodestr#"\t$rd, $rm, $imm16",
+        [(set GPR:$rd, (opnode GPR:$rm, uimm16:$imm16))]>;
 
     // Reg, Reg no shift
     def rr : HSInstTypeR<{family, 0b00, 0b0,var},
         (outs GPR:$rd), (ins GPR:$rm, GPR:$rn),
-        opcodestr#"\t$rd, $rm, $rn", []>;
+        opcodestr#"\t$rd, $rm, $rn",
+        [(set GPR:$rd, (opnode GPR:$rm, GPR:$rn))]>;
 
     // Reg, Reg shifted
-    def rr_sh : HSInstTypeRs<{family, 0b00, 0b0,var},
+    def rsh : HSInstTypeRs<{family, 0b00, 0b0,var},
         (outs GPR:$rd), (ins GPR:$rm, shift_rn:$rnsh),
-        opcodestr#"\t$rd, $rm, $rnsh", []>;
-}
+        opcodestr#"\t$rd, $rm, $rnsh",
+        [(set GPR:$rd, (opnode GPR:$rm, shift_rn:$rnsh))]>;
+}}
 
-defm ADD    : ALU_op<0b010, 0b00, "add">;
-defm ADDC   : ALU_op<0b010, 0b01, "addc">;
-defm SUB    : ALU_op<0b011, 0b00, "sub">;
-defm SUBC   : ALU_op<0b011, 0b10, "subc">;
-defm RSUB   : ALU_op<0b011, 0b01, "rsub">;
-defm RSUBC  : ALU_op<0b011, 0b11, "rsubc">;
-defm AND    : ALU_op<0b100, 0b00, "and">;
-defm BIC    : ALU_op<0b100, 0b01, "bic">;
-defm OR     : ALU_op<0b101, 0b00, "or">;
-defm XOR    : ALU_op<0b110, 0b00, "xor">;
+// Define the custom operators
+def  bic   : PatFrag<(ops node:$a, node:$b), (and node:$a, (not node:$b))>;
+def  rsub  : PatFrag<(ops node:$a, node:$b), (sub node:$b, node:$a)>;
+def  rsubc : PatFrag<(ops node:$a, node:$b), (subc node:$b, node:$a)>;
+
+defm ADD    : ALUOp<0b010, 0b00, "add",   add>;
+defm ADDC   : ALUOp<0b010, 0b01, "addc",  addc>;
+defm SUB    : ALUOp<0b011, 0b00, "sub",   sub>;
+defm SUBC   : ALUOp<0b011, 0b10, "subc",  subc>;
+defm RSUB   : ALUOp<0b011, 0b01, "rsub",  rsub>;
+defm RSUBC  : ALUOp<0b011, 0b11, "rsubc", rsubc>;
+defm AND    : ALUOp<0b100, 0b00, "and",   and>;
+defm BIC    : ALUOp<0b100, 0b01, "bic",   bic>;
+defm OR     : ALUOp<0b101, 0b00, "or",    or>;
+defm XOR    : ALUOp<0b110, 0b00, "xor",   xor>;
 
 //===----------------------------------------------------------------------===//
 // CMP and TST instructions
 //===----------------------------------------------------------------------===//
 
-// CMP_op - same as ALU_op except with different operands
-let rd = 0 in {
-multiclass CMP_op<bits<3> family, bits<2> var, string opcodestr> {
+// CmpOp - same as ALUOp except with different operands
+let rd = 0, Defs = [FLAGS] in {
+multiclass CmpOp<bits<3> family, bits<2> var, string opcodestr> {
     // Reg, Imm
     def ri : HSInstTypeI<{family, 0b01, 0b1,var},
         (outs ), (ins GPR:$rm, uimm16:$imm16),
@@ -163,42 +183,54 @@ multiclass CMP_op<bits<3> family, bits<2> var, string opcodestr> {
         opcodestr#"\t$rm, $rn", []>;
 
     // Reg, Reg shifted
-    def rr_sh : HSInstTypeRs<{family, 0b00, 0b0,var},
+    def rsh : HSInstTypeRs<{family, 0b00, 0b0,var},
         (outs ), (ins GPR:$rm, shift_rn:$rnsh),
         opcodestr#"\t$rm, $rnsh", []>;
 }}
 
-defm CMP    : CMP_op<0b011, 0b00, "cmp">;
-defm TST    : CMP_op<0b100, 0b00, "tst">;
+defm CMP    : CmpOp<0b011, 0b00, "cmp">;
+defm TST    : CmpOp<0b100, 0b00, "tst">;
 
 //===----------------------------------------------------------------------===//
-// Branch instructions
+// Branch and return instructions
 //===----------------------------------------------------------------------===//
 
-// BRANCH_op - defines the "branch" and "branch and link" variants
+// BranchOp - defines the "branch" and "branch and link" variants
 // described by b and bl
-let rd = 0, rm = 0 in {
-multiclass BRANCH_op<bits<4> cond, string opcodestr_b, string opcodestr_bl> {
+let rd = 0, rm = 0, isBranch = 1 in {
+multiclass BranchOp<bits<4> cond, string opcodestr_b, string opcodestr_bl> {
     // branch
-    def b : HSInstTypeI<{0b0101, cond}, (outs ), (ins simm16:$imm16),
-            opcodestr_b#"\t$imm16", []> { let TSFlags{0} = 1; }
+    def b : HSInstTypeI<{0b0101, cond},
+        (outs ), (ins simm16:$imm16), opcodestr_b#"\t$imm16", []
+    > {
+        let TSFlags{0} = 1;
+    }
     // branch and link
-    def bl : HSInstTypeI<{0b0111, cond}, (outs ), (ins simm16:$imm16),
-             opcodestr_bl#"\t$imm16", []> { let TSFlags{0} = 1; }
+    def bl : HSInstTypeI<{0b0111, cond},
+        (outs ), (ins simm16:$imm16), opcodestr_bl#"\t$imm16", []
+    > {
+        let TSFlags{0} = 1;
+        let isCall = 1;
+        let Defs = [LR];
+    }
 }}
 
-defm JMP    : BRANCH_op<0b0000, "jmp", "jal">;
-defm BEQ    : BRANCH_op<0b0001, "beq", "bleq">;
-defm BNE    : BRANCH_op<0b0010, "bne", "blne">;
-defm BCS    : BRANCH_op<0b0011, "bcs", "blcs">;
-defm BNC    : BRANCH_op<0b0100, "bnc", "blnc">;
-defm BSS    : BRANCH_op<0b0101, "bss", "blss">;
-defm BNS    : BRANCH_op<0b0110, "bns", "blns">;
-defm BOV    : BRANCH_op<0b0111, "bov", "blov">;
-defm BNV    : BRANCH_op<0b1000, "bnv", "blnv">;
-defm BAB    : BRANCH_op<0b1001, "bab", "blab">;
-defm BBE    : BRANCH_op<0b1010, "bbe", "blbe">;
-defm BGE    : BRANCH_op<0b1011, "bge", "blge">;
-defm BLT    : BRANCH_op<0b1100, "blt", "bllt">;
-defm BGT    : BRANCH_op<0b1101, "bgt", "blgt">;
-defm BLE    : BRANCH_op<0b1110, "ble", "blle">;
+defm JMP    : BranchOp<0b0000, "jmp", "jal">;
+defm BEQ    : BranchOp<0b0001, "beq", "bleq">;
+defm BNE    : BranchOp<0b0010, "bne", "blne">;
+defm BCS    : BranchOp<0b0011, "bcs", "blcs">;
+defm BNC    : BranchOp<0b0100, "bnc", "blnc">;
+defm BSS    : BranchOp<0b0101, "bss", "blss">;
+defm BNS    : BranchOp<0b0110, "bns", "blns">;
+defm BOV    : BranchOp<0b0111, "bov", "blov">;
+defm BNV    : BranchOp<0b1000, "bnv", "blnv">;
+defm BAB    : BranchOp<0b1001, "bab", "blab">;
+defm BBE    : BranchOp<0b1010, "bbe", "blbe">;
+defm BGE    : BranchOp<0b1011, "bge", "blge">;
+defm BLT    : BranchOp<0b1100, "blt", "bllt">;
+defm BGT    : BranchOp<0b1101, "bgt", "blgt">;
+defm BLE    : BranchOp<0b1110, "ble", "blle">;
+
+let isBarrier = 1, isReturn = 1, isTerminator = 1 in
+def RET : Pseudo<(outs ), (ins ), [(HS32Retflag)]>,
+          PseudoInstExpansion<(MOVrr PC, LR)>;

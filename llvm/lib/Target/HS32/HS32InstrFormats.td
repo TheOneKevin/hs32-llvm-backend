@@ -10,6 +10,9 @@ class HSInst<dag outs, dag ins, string asmstr, list<dag> pattern>
 
     bits<8> Opcode = 0;
     let Inst{31-24} = Opcode;
+    let hasSideEffects = 0;
+    let mayStore = 0;
+    let mayLoad = 0;
 
     let Namespace = "HS32";
     let AsmString = asmstr;
@@ -62,4 +65,11 @@ class HSInstTypeRs<bits<8> opcode, dag outs, dag ins, string asmstr, list<dag> p
     let Inst{19-16} = rm;
     let Inst{15-5} = rnsh;
     let Inst{4-0} = 0;
+}
+
+// Pseudo instructions for things like RET
+class Pseudo<dag outs, dag ins, list<dag> pattern, string asmstr = "">
+    : HSInst<outs, ins, asmstr, pattern> {
+    let isPseudo = 1;
+    let isCodeGenOnly = 1;
 }

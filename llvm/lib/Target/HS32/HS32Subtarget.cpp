@@ -11,7 +11,18 @@ using namespace llvm;
 
 void HS32Subtarget::anchor() { }
 
-HS32Subtarget::HS32Subtarget(const Triple &TT, const std::string &CPU,
-                             const std::string &FS, const TargetMachine &TM)
-    : HS32GenSubtargetInfo(TT, CPU,CPU, FS) { }
+HS32Subtarget &
+HS32Subtarget::initializeSubtargetDependencies(StringRef CPU, StringRef FS,
+                                               const TargetMachine &TM) {
+  StringRef CPUName = CPU;
+  if (CPUName.empty())
+    CPUName = "hs32";
+  ParseSubtargetFeatures(CPUName, CPUName, FS);
+  return *this;
+}
 
+HS32Subtarget::HS32Subtarget(const Triple &TT, const StringRef CPU,
+                             const StringRef FS, const TargetMachine &TM)
+    : HS32GenSubtargetInfo(TT, CPU, CPU, FS),
+      FrameLowering(initializeSubtargetDependencies(CPU, FS, TM)),
+      InstrInfo(), RegInfo(getHwMode()), TLInfo(TM, *this) { }

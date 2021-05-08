@@ -5,9 +5,12 @@ include "llvm/Target/Target.td"
 //===----------------------------------------------------------------------===//
 
 include "HS32RegisterInfo.td"
+include "HS32CallingConv.td"
 include "HS32InstrInfo.td"
 
-def HS32InstrInfo : InstrInfo;
+def HS32InstrInfo : InstrInfo {
+    let guessInstructionProperties = 0;
+}
 
 //===----------------------------------------------------------------------===//
 // HS32 processors supported

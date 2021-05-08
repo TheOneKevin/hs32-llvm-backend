@@ -1,3 +1,4 @@
+#include "HS32.h"
 #include "HS32TargetMachine.h"
 #include "TargetInfo/HS32TargetInfo.h"
 
@@ -75,10 +76,32 @@ HS32TargetMachine::HS32TargetMachine(const Target &T, const Triple &TT,
     : LLVMTargetMachine(T, computeDataLayout(TT, CPU, Options), TT, CPU, FS,
                         Options, getEffectiveRelocModel(TT, RM),
                         ::getEffectiveCodeModel(CM, false), OL),
-      TLOF(std::make_unique<TargetLoweringObjectFileELF>()) {
+      TLOF(std::make_unique<TargetLoweringObjectFileELF>()),
+      Subtarget(TT, CPU, FS, *this) {
   initAsmInfo();
 }
 
+namespace {
+
+class HS32PassConfig : public TargetPassConfig {
+public:
+  HS32PassConfig(HS32TargetMachine &TM, PassManagerBase &PM)
+      : TargetPassConfig(TM, PM) { }
+
+  HS32TargetMachine &getHS32TargetMachine() const {
+    return getTM<HS32TargetMachine>();
+  }
+
+  bool addInstSelector() override;
+};
+
+} // end anonymous namespace
+
 TargetPassConfig *HS32TargetMachine::createPassConfig(PassManagerBase &PM) {
-  return new TargetPassConfig(*this, PM);
+  return new HS32PassConfig(*this, PM);
+}
+
+bool HS32PassConfig::addInstSelector() {
+  addPass(createHS32ISelDag(getHS32TargetMachine(), getOptLevel()));
+  return false;
 }
