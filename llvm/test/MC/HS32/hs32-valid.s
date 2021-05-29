@@ -61,9 +61,9 @@ str [r2+r5 ror 31], r4
 
 # Test MOV and ALU
 
-# CHECK-INST: mov r6, 65024
-# CHECK: encoding: [0x24,0x60,0xfe,0x00]
-mov r6, 0xFEFE - 0xFE
+# CHECK-INST: mov r6, 32256
+# CHECK: encoding: [0x24,0x60,0x7e,0x00]
+mov r6, 0x7EFE - 0xFE
 # CHECK-INST: mov r3, r4
 # CHECK: encoding: [0x20,0x30,0x40,0x00]
 mov r3, r4

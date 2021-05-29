@@ -32,7 +32,6 @@ BitVector HS32RegisterInfo::getReservedRegs(const MachineFunction &MF) const {
 
   // Ensure register aliases are reserved
   markSuperRegs(Reserved, HS32::FP);
-  markSuperRegs(Reserved, HS32::MCR);
   markSuperRegs(Reserved, HS32::SP);
   markSuperRegs(Reserved, HS32::LR);
   markSuperRegs(Reserved, HS32::PC);

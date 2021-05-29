@@ -104,9 +104,9 @@ let rm = 0 in {
 multiclass MovOp<bits<3> family, bits<2> var, string opcodestr> {
     // Imm
     def ri : HSInstTypeI<{family, 0b00, 0b1,var},
-        (outs GPR:$rd), (ins uimm16:$imm16),
+        (outs GPR:$rd), (ins simm16:$imm16),
         opcodestr#"\t$rd, $imm16",
-        [(set GPR:$rd, uimm16:$imm16)]>;
+        [(set GPR:$rd, simm16:$imm16)]>;
 
     // Reg no shift
     def rr : HSInstTypeR<{family, 0b00, 0b0,var},
@@ -132,9 +132,9 @@ multiclass ALUOp<bits<3> family, bits<2> var, string opcodestr,
                  SDPatternOperator opnode> {
     // Reg, Imm
     def ri : HSInstTypeI<{family, 0b00, 0b1,var},
-        (outs GPR:$rd), (ins GPR:$rm, uimm16:$imm16),
+        (outs GPR:$rd), (ins GPR:$rm, simm16:$imm16),
         opcodestr#"\t$rd, $rm, $imm16",
-        [(set GPR:$rd, (opnode GPR:$rm, uimm16:$imm16))]>;
+        [(set GPR:$rd, (opnode GPR:$rm, simm16:$imm16))]>;
 
     // Reg, Reg no shift
     def rr : HSInstTypeR<{family, 0b00, 0b0,var},
@@ -158,8 +158,6 @@ defm ADD    : ALUOp<0b010, 0b00, "add",   add>;
 defm ADDC   : ALUOp<0b010, 0b01, "addc",  addc>;
 defm SUB    : ALUOp<0b011, 0b00, "sub",   sub>;
 defm SUBC   : ALUOp<0b011, 0b10, "subc",  subc>;
-defm RSUB   : ALUOp<0b011, 0b01, "rsub",  rsub>;
-defm RSUBC  : ALUOp<0b011, 0b11, "rsubc", rsubc>;
 defm AND    : ALUOp<0b100, 0b00, "and",   and>;
 defm BIC    : ALUOp<0b100, 0b01, "bic",   bic>;
 defm OR     : ALUOp<0b101, 0b00, "or",    or>;
@@ -174,7 +172,7 @@ let rd = 0, Defs = [FLAGS] in {
 multiclass CmpOp<bits<3> family, bits<2> var, string opcodestr> {
     // Reg, Imm
     def ri : HSInstTypeI<{family, 0b01, 0b1,var},
-        (outs ), (ins GPR:$rm, uimm16:$imm16),
+        (outs ), (ins GPR:$rm, simm16:$imm16),
         opcodestr#"\t$rm, $imm16", []>;
 
     // Reg, Reg no shift

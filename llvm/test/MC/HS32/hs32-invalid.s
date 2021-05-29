@@ -14,20 +14,20 @@ ldr r6, [r3+98743]
 str [r4-123456], r3
 # CHECK: error: shift amount must be an integer in [0, 31]
 mov r2, r3 srx 32
-# CHECK: error: immediate must be an integer within [0, 65535]
-mov r2, 65536
-# CHECK: error: immediate must be an integer within [0, 65535]
-mov r2, -1
+# CHECK: error: immediate must be an integer within [-32768, 32767]
+mov r2, 32768
+# CHECK: error: immediate must be an integer within [-32768, 32767]
+mov r2, -32769
 # CHECK: error: shift amount must be an integer in [0, 31]
 add r2, r4, r3 ror 32
-# CHECK: error: immediate must be an integer within [0, 65535]
-add r5, r2, 65536
-# CHECK: error: immediate must be an integer within [0, 65535]
-rsubc r1, r3, -1
-# CHECK: error: immediate must be an integer within [0, 65535]
-cmp r1, -1
-# CHECK: error: immediate must be an integer within [0, 65535]
-tst r6, -100
+# CHECK: error: immediate must be an integer within [-32768, 32767]
+add r5, r2, 32768
+# CHECK: error: invalid instruction
+rsubc r1, r3, -32769
+# CHECK: error: immediate must be an integer within [-32768, 32767]
+cmp r1, 32768
+# CHECK: error: immediate must be an integer within [-32768, 32767]
+tst r6, -32769
 # CHECK: error: immediate must be an integer within [-32768, 32767]
 jmp 32768
 # CHECK: error: immediate must be an integer within [-32768, 32767]

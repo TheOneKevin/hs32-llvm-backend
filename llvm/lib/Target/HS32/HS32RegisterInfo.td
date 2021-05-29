@@ -16,8 +16,7 @@ foreach Index = 0-12 in {
 
 // Special registers
 let RegAltNameIndices = [RegNamesRaw] in {
-    def FP  : HS32Reg<12, "fp", ["r11"]>, DwarfRegNum<[12]>;
-    def MCR : HS32Reg<12, "mcr", ["r12"]>, DwarfRegNum<[12]>;
+    def FP  : HS32Reg<12, "fp", ["r12"]>, DwarfRegNum<[12]>;
     def SP  : HS32Reg<13, "sp", ["r13"]>,  DwarfRegNum<[13]>;
     def LR  : HS32Reg<14, "lr", ["r14"]>,  DwarfRegNum<[14]>;
     def PC  : HS32Reg<15, "pc", ["r15"]>,  DwarfRegNum<[15]>;
