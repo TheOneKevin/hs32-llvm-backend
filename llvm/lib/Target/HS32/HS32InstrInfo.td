@@ -45,12 +45,30 @@ def shift_rn : Operand<i32>,
 }
 
 //===----------------------------------------------------------------------===//
-// Custom DAG node types
+// Custom DAG node types and PatLeafs
 // - See TargetSelectionDAG.td for DAG type descriptions (used by HS32ISD::*)
 //===----------------------------------------------------------------------===//
 
+// Signed 32 bit immediate
+def simm32 : ImmLeaf<i32, [{ return isInt<32>(Imm); }]>;
+
+// Immediate where bits [15:0] are 0
+def lo16zeros : PatLeaf<(i32 imm), [{
+    return ((uint32_t) N->getZExtValue() & 0xffff) == 0;
+    }]>;
+
 def HS32Retflag : SDNode<"HS32ISD::RET_FLAG", SDTNone,
                          [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
+
+def HI16 : SDNodeXForm<imm, [{
+    return CurDAG->getTargetConstant(
+     ((uint32_t) N->getZExtValue() >> 16) & 0xffff, SDLoc(N), N->getValueType(0));
+    }]>;
+
+def LO16 : SDNodeXForm<imm, [{
+    return CurDAG->getTargetConstant(
+     (uint32_t) N->getZExtValue() & 0xffff, SDLoc(N), N->getValueType(0));
+    }]>;
 
 //===----------------------------------------------------------------------===//
 // LDR and STR memory instructions
@@ -100,24 +118,34 @@ defm STR : StrOp<"str">;
 //===----------------------------------------------------------------------===//
 
 // MovOp - same as ALUOp with rm zeroed
-let rm = 0 in {
-multiclass MovOp<bits<3> family, bits<2> var, string opcodestr> {
-    // Imm
-    def ri : HSInstTypeI<{family, 0b00, 0b1,var},
-        (outs GPR:$rd), (ins simm16:$imm16),
-        opcodestr#"\t$rd, $imm16",
-        [(set GPR:$rd, simm16:$imm16)]>;
+let rm = 0, hasSideEffects = 0, mayLoad = 0, mayStore = 0 in {
+    multiclass MovOp<bits<3> family, bits<2> var, string opcodestr> {
+        // Imm
+        def ri : HSInstTypeI<{family, 0b00, 0b1,var},
+            (outs GPR:$rd), (ins simm16:$imm16),
+            opcodestr#"\t$rd, $imm16",
+            [(set GPR:$rd, simm16:$imm16)]>;
 
-    // Reg no shift
-    def rr : HSInstTypeR<{family, 0b00, 0b0,var},
-        (outs GPR:$rd), (ins GPR:$rn),
-        opcodestr#"\t$rd, $rn", []>;
+        // Reg no shift
+        def rr : HSInstTypeR<{family, 0b00, 0b0,var},
+            (outs GPR:$rd), (ins GPR:$rn),
+            opcodestr#"\t$rd, $rn", []>;
 
-    // Reg shifted
-    def rsh : HSInstTypeRs<{family, 0b00, 0b0,var},
-        (outs GPR:$rd), (ins shift_rn:$rnsh),
-        opcodestr#"\t$rd, $rnsh", []>;
-}}
+        // Reg shifted
+        def rsh : HSInstTypeRs<{family, 0b00, 0b0,var},
+            (outs GPR:$rd), (ins shift_rn:$rnsh),
+            opcodestr#"\t$rd, $rnsh", []>;
+    }
+
+    // Special move upper imm instruction
+    let Constraints = "$src = $rd" in {
+    def MOVTri : HSInstTypeI<{0b001, 0b00, 0b110},
+            (outs GPR:$rd), (ins GPR:$src, simm16:$imm16),
+            "movt\t$rd, $imm16", [
+                (set GPR:$rd, (or (and GPR:$src, 0xffff), lo16zeros:$imm16))
+            ]>;
+    }
+}
 
 defm MOV : MovOp<0b001, 0b00, "mov">;
 
@@ -232,3 +260,10 @@ defm BLE    : BranchOp<0b1110, "ble", "blle">;
 let isBarrier = 1, isReturn = 1, isTerminator = 1 in
 def RET : Pseudo<(outs ), (ins ), [(HS32Retflag)]>,
           PseudoInstExpansion<(MOVrr PC, LR)>;
+
+//===----------------------------------------------------------------------===//
+// Codegen specific patterns
+//===----------------------------------------------------------------------===//
+
+// Materialize 32-bit signed immediates
+def : Pat<(simm32:$imm), (MOVTri (MOVri (LO16 imm:$imm)), (HI16 imm:$imm))>;

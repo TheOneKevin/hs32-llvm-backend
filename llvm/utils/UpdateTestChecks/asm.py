@@ -156,7 +156,7 @@ ASM_FUNCTION_WASM32_RE = re.compile(
     flags=(re.M | re.S))
 
 ASM_FUNCTION_HS32_RE = re.compile(
-    r'^_?(?P<func>[^:]+):[ \t]*#+[ \t]*@"?(?P=func)"?\n'
+    r'^_?(?P<func>[^:]+):[ \t]*;+[ \t]*@"?(?P=func)"?\n'
     r'(?P<body>.*?)\n'
     r'^\s*(\.Lfunc_end[0-9]+:\n|end_function)',
     flags=(re.M | re.S))
