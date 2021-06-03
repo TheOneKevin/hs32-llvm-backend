@@ -267,3 +267,20 @@ def RET : Pseudo<(outs ), (ins ), [(HS32Retflag)]>,
 
 // Materialize 32-bit signed immediates
 def : Pat<(simm32:$imm), (MOVTri (MOVri (LO16 imm:$imm)), (HI16 imm:$imm))>;
+
+// Match load patterns
+// TODO: proper s/zext load support (see HS32ISelLowering.cpp)
+multiclass LdrPat<PatFrag LoadOp, HSInst Inst> {
+    def : Pat<(LoadOp GPR:$rm), (Inst GPR:$rm, 0)>;
+    def : Pat<(LoadOp (add GPR:$rm, simm16:$imm)), (Inst GPR:$rm, simm16:$imm)>;
+}
+defm : LdrPat<load, LDRri>;
+
+// Match store patterns
+// TODO: proper trunc support (see HS32ISelLowering.cpp)
+multiclass StrPat<PatFrag StoreOp, HSInst Inst> {
+    def : Pat<(StoreOp GPR:$rd, GPR:$rm), (Inst GPR:$rd, GPR:$rm, 0)>;
+    def : Pat<(StoreOp GPR:$rd, (add GPR:$rm, simm16:$imm)),
+              (Inst GPR:$rd, GPR:$rm, simm16:$imm)>;
+}
+defm : StrPat<store, STRri>;

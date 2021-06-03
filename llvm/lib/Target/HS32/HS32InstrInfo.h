@@ -14,6 +14,11 @@ class HS32InstrInfo : public HS32GenInstrInfo {
 public:
   explicit HS32InstrInfo();
 
+  void copyPhysReg(MachineBasicBlock &MBB,
+                   MachineBasicBlock::iterator MI,
+                   const DebugLoc &DL, MCRegister DestReg,
+                   MCRegister SrcReg, bool KillSrc) const override;
+
   void storeRegToStackSlot(MachineBasicBlock &MBB,
                            MachineBasicBlock::iterator MI, Register SrcReg,
                            bool isKill, int FrameIndex,

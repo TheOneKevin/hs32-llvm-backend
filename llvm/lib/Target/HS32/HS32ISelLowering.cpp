@@ -29,6 +29,15 @@ HS32TargetLowering::HS32TargetLowering(const TargetMachine &TM,
   computeRegisterProperties(STI.getRegisterInfo());
   setStackPointerRegisterToSaveRestore(HS32::SP);
 
+  // Support for all load/store types
+  for (auto N : {ISD::EXTLOAD, ISD::SEXTLOAD, ISD::ZEXTLOAD}) {
+    setLoadExtAction(N, MVT::i32, MVT::i1, Promote);
+    setLoadExtAction(N, MVT::i32, MVT::i8, Promote);
+    setLoadExtAction(N, MVT::i32, MVT::i16, Promote);
+    setLoadExtAction(N, MVT::i32, MVT::i32, Legal);
+    setLoadExtAction(N, MVT::i32, MVT::i64, Expand);
+  }
+
   // TODO: Add all setOperationAction
   setBooleanContents(ZeroOrOneBooleanContent);
 
@@ -124,7 +133,7 @@ SDValue HS32TargetLowering::LowerReturn(
     assert(VA.isRegLoc() && "can only return in registers!");
     Chain = DAG.getCopyToReg(Chain, DL, VA.getLocReg(), OutVals[i], Flag);
 
-    // Gaurantee all emitted copies are stuck together with flags
+    // Guarantee all emitted copies are stuck together with flags
     Flag = Chain.getValue(1);
     RetOps.push_back(DAG.getRegister(VA.getLocReg(), VA.getLocVT()));
   }

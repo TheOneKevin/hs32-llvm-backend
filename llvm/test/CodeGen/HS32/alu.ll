@@ -10,3 +10,5 @@ define i32 @addi(i32 %a) nounwind {
   %1 = add i32 %a, 10
   ret i32 %1
 }
+
+

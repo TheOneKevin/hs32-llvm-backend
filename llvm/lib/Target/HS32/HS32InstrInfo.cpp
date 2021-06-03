@@ -24,6 +24,15 @@ using namespace llvm;
 
 HS32InstrInfo::HS32InstrInfo() : HS32GenInstrInfo() { }
 
+void HS32InstrInfo::copyPhysReg(MachineBasicBlock &MBB,
+                                MachineBasicBlock::iterator MI,
+                                const DebugLoc &DL, MCRegister DestReg,
+                                MCRegister SrcReg, bool KillSrc) const {
+  assert(HS32::GPRRegClass.contains(DestReg, SrcReg) && "Impossible reg-to-reg copy");
+  BuildMI(MBB, MI, DL, get(HS32::MOVrr), DestReg)
+    .addReg(SrcReg, getKillRegState(KillSrc));
+}
+
 void HS32InstrInfo::storeRegToStackSlot(MachineBasicBlock &MBB,
                                         MachineBasicBlock::iterator MI,
                                         Register SrcReg, bool IsKill,

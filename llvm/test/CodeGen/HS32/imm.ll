@@ -7,7 +7,7 @@ define i32 @mov_small_pos() nounwind {
 ; HS32:       ; %bb.0:
 ; HS32-NEXT:    mov r10, 12
 ; HS32-NEXT:    mov pc, lr
-  ret i32 12
+    ret i32 12
 }
 
 define i32 @mov_small_neg() nounwind {
@@ -15,7 +15,7 @@ define i32 @mov_small_neg() nounwind {
 ; HS32:       ; %bb.0:
 ; HS32-NEXT:    mov r10, -2
 ; HS32-NEXT:    mov pc, lr
-  ret i32 -2
+    ret i32 -2
 }
 
 define i32 @mov_large_pos() nounwind {
@@ -24,7 +24,7 @@ define i32 @mov_large_pos() nounwind {
 ; HS32-NEXT:    mov r10, 24910
 ; HS32-NEXT:    movt r10, 188
 ; HS32-NEXT:    mov pc, lr
-  ret i32 12345678
+    ret i32 12345678
 }
 
 define i32 @mov_large_neg() nounwind {
@@ -33,5 +33,5 @@ define i32 @mov_large_neg() nounwind {
 ; HS32-NEXT:    mov r10, 40626
 ; HS32-NEXT:    movt r10, 65347
 ; HS32-NEXT:    mov pc, lr
-  ret i32 -12345678
+    ret i32 -12345678
 }
