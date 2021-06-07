@@ -1,4 +1,5 @@
 #include "HS32.h"
+#include "HS32MCInstLower.h"
 #include "MCTargetDesc/HS32InstPrinter.h"
 #include "HS32TargetMachine.h"
 #include "TargetInfo/HS32TargetInfo.h"
@@ -43,9 +44,12 @@ void HS32AsmPrinter::emitInstruction(const MachineInstr *MI) {
   if(emitPseudoExpansionLowering(*OutStreamer, MI)) {
     return;
   }
-  MCInst Tmp;
-  LowerHS32MachineInstrToMCInst(*MI, Tmp);
-  EmitToStreamer(*OutStreamer, Tmp);
+
+  MCInst I;
+  HS32MCInstLower MCInstLowering(OutContext, *this);
+
+  MCInstLowering.lowerInstruction(*MI, I);
+  EmitToStreamer(*OutStreamer, I);
 }
 
 static AsmPrinter *createHS32AsmPrinterPass(TargetMachine &tm,

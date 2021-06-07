@@ -13,8 +13,6 @@ class MCInst;
 
 FunctionPass *createHS32ISelDag(HS32TargetMachine &TM, CodeGenOpt::Level OL);
 
-void LowerHS32MachineInstrToMCInst(const MachineInstr &MI, MCInst &OutMI);
-
 } // end namespace llvm
 
 #endif // LLVM_HS32_H

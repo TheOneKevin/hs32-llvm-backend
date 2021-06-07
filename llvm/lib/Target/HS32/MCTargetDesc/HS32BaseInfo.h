@@ -16,6 +16,11 @@ enum ShiftTypes {
   shl = 0, shr = 1, srx = 2, ror = 3, Invalid
 };
 
+// Machine operands (for global lowering)
+enum {
+  MO_None, MO_Hi, MO_Lo, MO_PcrelHi
+};
+
 static inline ShiftTypes getShiftTypeFromString(StringRef Name) {
   return StringSwitch<ShiftTypes>(Name)
       .Case("shl", ShiftTypes::shl)

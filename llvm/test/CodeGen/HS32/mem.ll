@@ -37,3 +37,23 @@ define void @storew(i32 *%a, i32 %b) nounwind {
   store volatile i32 %b, i32* %a            ; test load non-indexed address
   ret void
 }
+
+@G = global i32 0
+
+define i32 @lw_sw_global(i32 %a) nounwind {
+; HS32-LABEL: lw_sw_global:
+; HS32:       ; %bb.0:
+; HS32-NEXT:    mov r0, %lo(G)
+; HS32-NEXT:    movt r0, %hi(G)
+; HS32-NEXT:    ldr r10, [r0]
+; HS32-NEXT:    str [r0], r1
+; HS32-NEXT:    ldr r11, [r0+100]
+; HS32-NEXT:    str [r0+100], r1
+; HS32-NEXT:    mov pc, lr
+  %1 = load volatile i32, i32* @G
+  store i32 %a, i32* @G
+  %2 = getelementptr i32, i32* @G, i32 25
+  %3 = load volatile i32, i32* %2
+  store i32 %a, i32* %2
+  ret i32 %1
+}

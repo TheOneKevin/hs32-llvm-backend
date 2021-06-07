@@ -3,6 +3,8 @@
 #include "HS32Subtarget.h"
 #include "HS32TargetMachine.h"
 #include "HS32ISelLowering.h"
+#include "MCTargetDesc/HS32BaseInfo.h"
+#include "MCTargetDesc/HS32MCTargetDesc.h"
 
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/STLExtras.h"
@@ -11,6 +13,7 @@
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/SelectionDAG.h"
+#include "llvm/CodeGen/SelectionDAGNodes.h"
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
 #include "llvm/IR/Function.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -26,7 +29,7 @@ HS32TargetLowering::HS32TargetLowering(const TargetMachine &TM,
   addRegisterClass(MVT::i32, &HS32::GPRRegClass);
 
   // Compute derived properties from the register classes.
-  computeRegisterProperties(STI.getRegisterInfo());
+  computeRegisterProperties(Subtarget.getRegisterInfo());
   setStackPointerRegisterToSaveRestore(HS32::SP);
 
   // Support for all load/store types
@@ -40,6 +43,8 @@ HS32TargetLowering::HS32TargetLowering(const TargetMachine &TM,
 
   // TODO: Add all setOperationAction
   setBooleanContents(ZeroOrOneBooleanContent);
+
+  setOperationAction(ISD::GlobalAddress, MVT::i32, Custom);
 
   setMinFunctionAlignment(Align(2));
   setMinimumJumpTableEntries(UINT_MAX);
@@ -58,7 +63,37 @@ SDValue HS32TargetLowering::LowerOperation(SDValue Op,
                                            SelectionDAG &DAG) const {
   switch(Op.getOpcode()) {
   default: report_fatal_error("unimplemented operand");
+  case ISD::GlobalAddress:
+    return LowerGlobalAddress(Op, DAG);
   }
+}
+
+//===----------------------------------------------------------------------===//
+// DAG lowering implementation
+//===----------------------------------------------------------------------===//
+
+SDValue HS32TargetLowering::LowerGlobalAddress(SDValue Op,
+                                               SelectionDAG &DAG) const {
+  auto DL = DAG.getDataLayout();
+
+  const GlobalAddressSDNode *Node = cast<GlobalAddressSDNode>(Op);
+  const const GlobalValue *GV = Node->getGlobal();
+  int64_t Offset = Node->getOffset();
+
+  // We don't support PIE yet
+  if(!isPositionIndependent()) {
+    SDValue AdHi = DAG.getTargetGlobalAddress(
+        GV, SDLoc(Op), getPointerTy(DL), Offset, HS32II::MO_Hi);
+    SDValue AdLo = DAG.getTargetGlobalAddress(
+        GV, SDLoc(Op), getPointerTy(DL), Offset, HS32II::MO_Lo);
+    // (movt (mov adlo) adhi)
+    SDValue MnLo =
+        SDValue(DAG.getMachineNode(HS32::MOVri, SDLoc(Op), getPointerTy(DL), AdLo), 0);
+    SDValue MnHi =
+        SDValue(DAG.getMachineNode(HS32::MOVTri, SDLoc(Op), getPointerTy(DL), MnLo, AdHi), 0);
+    return MnHi;
+  }
+  report_fatal_error("unable to lower global address");
 }
 
 //===----------------------------------------------------------------------===//
