@@ -12,8 +12,8 @@
 
 mov r2, %lo(0xffff)+1+0xcafe
 mov r2, %hi(0xffff1234)
-# CHECK-HEX: mov r2, 0xcafe
-# CHECK-HEX: mov r2, 0xffff
+# CHECK-HEX: mov r2, -0x3502
+# CHECK-HEX: mov r2, -0x1
 
 .equ addr, 0xdeadbeef
 jal %hi(addr)

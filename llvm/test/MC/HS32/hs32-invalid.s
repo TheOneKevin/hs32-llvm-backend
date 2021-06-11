@@ -86,7 +86,7 @@ tst r6
 # CHECK: error: too few operands for instruction
 jal
 # CHECK: error: too few operands for instruction
-bnc
+bne
 
 # Malformed operand
 

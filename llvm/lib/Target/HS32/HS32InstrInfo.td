@@ -286,6 +286,13 @@ let rd = 0, rm = 0, isBranch = 1, isTerminator = 1, isBarrier = 1 in {
     > {
         let TSFlags{0} = 1;
     }
+    def JMPbl : HSInstTypeI<{0b0111, 0b0000},
+        (outs ), (ins brsimm16:$imm16), "jal\t$imm16", []
+    > {
+        let TSFlags{0} = 1;
+        let isCall = 1;
+        let Defs = [LR];
+    }
 }
 
 defm BEQ    : BranchOp<0b0001, "beq", "bleq", HS32_COND_EQ>;

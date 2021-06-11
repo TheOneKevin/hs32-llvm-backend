@@ -7,10 +7,10 @@
 
 .LBB0:
 # CHECK-FIXUP: fixup A - offset: 0, value: %hi(val), kind: fixup_hs32_hi
-# CHECK-INSTR: mov r1, 51966
+# CHECK-INSTR: mov r1, -13570
 mov r1, %hi(val)
 # CHECK-FIXUP: fixup A - offset: 0, value: %lo(val), kind: fixup_hs32_lo
-# CHECK-INSTR: mov r1, 47806
+# CHECK-INSTR: mov r1, -17730
 mov r1, %lo(val)
 # CHECK-FIXUP: fixup A - offset: 0, value: %lo(val), kind: fixup_hs32_lo
 # CHECK-INSTR: ldr r1, [r2-17730]
