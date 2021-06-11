@@ -27,3 +27,4 @@ def GPR : RegisterClass<"HS32", [i32], 32, (add (sequence "R%u", 0, 12), FP, SP,
 
 // Arithmetic flags
 def FLAGS : HS32Reg<15, "flags">, DwarfRegNum<[69]>;
+def PSR : RegisterClass<"HS32", [i32], 32, (add FLAGS)>;

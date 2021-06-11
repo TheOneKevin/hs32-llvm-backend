@@ -10,6 +10,28 @@
 
 namespace llvm {
 
+namespace HS32CC {
+
+// HS32 specific condition codes, see HS32InstrInfo.td
+enum CondCode {
+  COND_EQ,
+  COND_NE,
+  COND_CS, // Unused
+  COND_NC, // Unused
+  COND_SS, // Unused
+  COND_NS, // Unused
+  COND_OV, // Unused
+  COND_NV, // Unused
+  COND_AB,
+  COND_BE,
+  COND_GE,
+  COND_LT,
+  COND_GT,
+  COND_LE
+};
+
+} // end namespace HS32CC
+
 class HS32InstrInfo : public HS32GenInstrInfo {
 public:
   explicit HS32InstrInfo();

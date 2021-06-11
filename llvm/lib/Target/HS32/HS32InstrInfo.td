@@ -21,6 +21,11 @@ def simm16 : Operand<i32>, ImmLeaf<i32, [{ return isInt<16>(Imm); }]> {
     let DecoderMethod = "decodeSImmOperand<16>";
 }
 
+def brsimm16 : Operand<OtherVT> {
+    let ParserMatchClass = SImmAsmOperand<16>;
+    let DecoderMethod = "decodeSImmOperand<16>";
+}
+
 // This is same as simm16 with custom PrintMethod
 def simm16offset : Operand<i32>, ImmLeaf<i32, [{ return isInt<16>(Imm); }]> {
     let ParserMatchClass = SImmAsmOperand<16>;
@@ -44,11 +49,6 @@ def shift_rn : Operand<i32>,
     let MIOperandInfo = (ops GPR, i32imm);
 }
 
-//===----------------------------------------------------------------------===//
-// Custom DAG node types and PatLeafs
-// - See TargetSelectionDAG.td for DAG type descriptions (used by HS32ISD::*)
-//===----------------------------------------------------------------------===//
-
 // Signed 32 bit immediate
 def simm32 : ImmLeaf<i32, [{ return isInt<32>(Imm); }]>;
 
@@ -56,9 +56,6 @@ def simm32 : ImmLeaf<i32, [{ return isInt<32>(Imm); }]>;
 def lo16zeros : PatLeaf<(i32 imm), [{
     return ((uint32_t) N->getZExtValue() & 0xffff) == 0;
     }]>;
-
-def HS32Retflag : SDNode<"HS32ISD::RET_FLAG", SDTNone,
-                         [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
 
 def HI16 : SDNodeXForm<imm, [{
     return CurDAG->getTargetConstant(
@@ -69,6 +66,37 @@ def LO16 : SDNodeXForm<imm, [{
     return CurDAG->getTargetConstant(
      (uint32_t) N->getZExtValue() & 0xffff, SDLoc(N), N->getValueType(0));
     }]>;
+
+//===----------------------------------------------------------------------===//
+// HS32 custom DAG node definitions
+// - See TargetSelectionDAG.td for DAG type descriptions (used by HS32ISD::*)
+//===----------------------------------------------------------------------===//
+
+def HS32Retflag : SDNode<"HS32ISD::RET_FLAG", SDTNone,
+                         [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
+
+def SDT_HS32Cmp : SDTypeProfile<0, 2, []>;
+def HS32Cmp : SDNode<"HS32ISD::CMP", SDT_HS32Cmp, [SDNPOutGlue]>;
+
+def SDT_HS32Tst : SDTypeProfile<0, 2, []>;
+def HS32Tst : SDNode<"HS32ISD::TST", SDT_HS32Tst, [SDNPOutGlue]>;
+
+def SDT_HS32Bcc : SDTypeProfile<0, 2, [SDTCisVT<0, OtherVT>, SDTCisVT<1, i32>]>;
+def HS32Bcc : SDNode<"HS32ISD::BRCOND", SDT_HS32Bcc, [SDNPHasChain, SDNPInGlue]>;
+
+def SDT_HS32Bcl : SDTypeProfile<0, 2, [SDTCisVT<0, OtherVT>, SDTCisVT<1, i32>]>;
+def HS32Bcl : SDNode<"HS32ISD::BLCOND", SDT_HS32Bcl, [SDNPHasChain, SDNPInGlue]>;
+
+// HS32 specific condition codes, see HS32InstrInfo.h
+def HS32_COND_EQ : PatLeaf<(i32 0)>;
+def HS32_COND_NE : PatLeaf<(i32 1)>;
+def HS32_COND_AB : PatLeaf<(i32 8)>;
+def HS32_COND_BE : PatLeaf<(i32 9)>;
+def HS32_COND_GE : PatLeaf<(i32 10)>;
+def HS32_COND_GT : PatLeaf<(i32 11)>;
+def HS32_COND_LT : PatLeaf<(i32 12)>;
+def HS32_COND_LE : PatLeaf<(i32 13)>;
+def HS32_COND_NONE : PatLeaf<(i32 14)>;
 
 //===----------------------------------------------------------------------===//
 // LDR and STR memory instructions
@@ -201,17 +229,20 @@ multiclass CmpOp<bits<3> family, bits<2> var, string opcodestr> {
     // Reg, Imm
     def ri : HSInstTypeI<{family, 0b01, 0b1,var},
         (outs ), (ins GPR:$rm, simm16:$imm16),
-        opcodestr#"\t$rm, $imm16", []>;
+        opcodestr#"\t$rm, $imm16",
+        [(HS32Cmp GPR:$rm, simm16:$imm16), (implicit FLAGS)]>;
 
     // Reg, Reg no shift
     def rr : HSInstTypeR<{family, 0b01, 0b0,var},
         (outs ), (ins GPR:$rm, GPR:$rn),
-        opcodestr#"\t$rm, $rn", []>;
+        opcodestr#"\t$rm, $rn",
+        [(HS32Cmp GPR:$rm, GPR:$rn), (implicit FLAGS)]>;
 
     // Reg, Reg shifted
     def rsh : HSInstTypeRs<{family, 0b00, 0b0,var},
         (outs ), (ins GPR:$rm, shift_rn:$rnsh),
-        opcodestr#"\t$rm, $rnsh", []>;
+        opcodestr#"\t$rm, $rnsh",
+        [(HS32Cmp GPR:$rm, shift_rn:$rnsh), (implicit FLAGS)]>;
 }}
 
 defm CMP    : CmpOp<0b011, 0b00, "cmp">;
@@ -223,39 +254,48 @@ defm TST    : CmpOp<0b100, 0b00, "tst">;
 
 // BranchOp - defines the "branch" and "branch and link" variants
 // described by b and bl
-let rd = 0, rm = 0, isBranch = 1 in {
-multiclass BranchOp<bits<4> cond, string opcodestr_b, string opcodestr_bl> {
-    // branch
-    def b : HSInstTypeI<{0b0101, cond},
-        (outs ), (ins simm16:$imm16), opcodestr_b#"\t$imm16", []
-    > {
-        let TSFlags{0} = 1;
+let rd = 0, rm = 0, isBranch = 1, isTerminator = 1, isBarrier = 1 in {
+    
+    // Conditional jumps
+    let Uses = [FLAGS] in {
+        multiclass BranchOp<bits<4> cond, string opcodestr_b,
+                            string opcodestr_bl, PatLeaf CC> {
+            // branch
+            def b : HSInstTypeI<{0b0101, cond},
+                (outs ), (ins brsimm16:$imm16),
+                opcodestr_b#"\t$imm16",
+                [(HS32Bcc bb:$imm16, CC)]
+            > {
+                let TSFlags{0} = 1;
+            }
+            // branch and link
+            def bl : HSInstTypeI<{0b0111, cond},
+                (outs ), (ins brsimm16:$imm16), opcodestr_bl#"\t$imm16",
+                [(HS32Bcl bb:$imm16, CC), (implicit LR)]
+            > {
+                let TSFlags{0} = 1;
+                let isCall = 1;
+                let Defs = [LR];
+            }
+        }
     }
-    // branch and link
-    def bl : HSInstTypeI<{0b0111, cond},
-        (outs ), (ins simm16:$imm16), opcodestr_bl#"\t$imm16", []
-    > {
-        let TSFlags{0} = 1;
-        let isCall = 1;
-        let Defs = [LR];
-    }
-}}
 
-defm JMP    : BranchOp<0b0000, "jmp", "jal">;
-defm BEQ    : BranchOp<0b0001, "beq", "bleq">;
-defm BNE    : BranchOp<0b0010, "bne", "blne">;
-defm BCS    : BranchOp<0b0011, "bcs", "blcs">;
-defm BNC    : BranchOp<0b0100, "bnc", "blnc">;
-defm BSS    : BranchOp<0b0101, "bss", "blss">;
-defm BNS    : BranchOp<0b0110, "bns", "blns">;
-defm BOV    : BranchOp<0b0111, "bov", "blov">;
-defm BNV    : BranchOp<0b1000, "bnv", "blnv">;
-defm BAB    : BranchOp<0b1001, "bab", "blab">;
-defm BBE    : BranchOp<0b1010, "bbe", "blbe">;
-defm BGE    : BranchOp<0b1011, "bge", "blge">;
-defm BLT    : BranchOp<0b1100, "blt", "bllt">;
-defm BGT    : BranchOp<0b1101, "bgt", "blgt">;
-defm BLE    : BranchOp<0b1110, "ble", "blle">;
+    // Unconditional jumps
+    def JMPb : HSInstTypeI<{0b0101, 0b0000},
+        (outs ), (ins brsimm16:$imm16), "jmp\t$imm16", [(br bb:$imm16)]
+    > {
+        let TSFlags{0} = 1;
+    }
+}
+
+defm BEQ    : BranchOp<0b0001, "beq", "bleq", HS32_COND_EQ>;
+defm BNE    : BranchOp<0b0010, "bne", "blne", HS32_COND_NE>;
+defm BAB    : BranchOp<0b1001, "bab", "blab", HS32_COND_AB>;
+defm BBE    : BranchOp<0b1010, "bbe", "blbe", HS32_COND_BE>;
+defm BGE    : BranchOp<0b1011, "bge", "blge", HS32_COND_GE>;
+defm BLT    : BranchOp<0b1100, "blt", "bllt", HS32_COND_LT>;
+defm BGT    : BranchOp<0b1101, "bgt", "blgt", HS32_COND_GT>;
+defm BLE    : BranchOp<0b1110, "ble", "blle", HS32_COND_LE>;
 
 let isBarrier = 1, isReturn = 1, isTerminator = 1 in
 def RET : Pseudo<(outs ), (ins ), [(HS32Retflag)]>,

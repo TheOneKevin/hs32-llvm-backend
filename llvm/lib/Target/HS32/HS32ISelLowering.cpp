@@ -9,6 +9,7 @@
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/CodeGen/CallingConvLower.h"
+#include "llvm/CodeGen/ISDOpcodes.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
@@ -17,6 +18,7 @@
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
 #include "llvm/IR/Function.h"
 #include "llvm/Support/ErrorHandling.h"
+#include <type_traits>
 
 using namespace llvm;
 
@@ -46,6 +48,9 @@ HS32TargetLowering::HS32TargetLowering(const TargetMachine &TM,
 
   setOperationAction(ISD::GlobalAddress, MVT::i32, Custom);
 
+  setOperationAction(ISD::BR_CC, MVT::i32, Custom);
+  setOperationAction(ISD::BRCOND, MVT::Other, Expand);
+
   setMinFunctionAlignment(Align(2));
   setMinimumJumpTableEntries(UINT_MAX);
 }
@@ -54,7 +59,10 @@ const char *HS32TargetLowering::getTargetNodeName(unsigned int Opcode) const {
 #define NODE(name) case HS32ISD::name: return #name
     switch(Opcode) {
     default: return nullptr;
-    NODE(RET_FLAG);
+      NODE(RET_FLAG);
+      NODE(BRCOND);
+      NODE(CMP);
+      NODE(TST);
     }
 #undef NODE
 }
@@ -62,11 +70,74 @@ const char *HS32TargetLowering::getTargetNodeName(unsigned int Opcode) const {
 SDValue HS32TargetLowering::LowerOperation(SDValue Op,
                                            SelectionDAG &DAG) const {
   switch(Op.getOpcode()) {
-  default: report_fatal_error("unimplemented operand");
+  default: report_fatal_error("unimplemented operation");
   case ISD::GlobalAddress:
     return LowerGlobalAddress(Op, DAG);
+  case ISD::BR_CC:
+    return LowerBR_CC(Op, DAG);
   }
 }
+
+//===----------------------------------------------------------------------===//
+// Branch conditions
+//===----------------------------------------------------------------------===//
+
+static HS32CC::CondCode getHS32CC(ISD::CondCode CC) {
+  switch(CC) {
+  default:
+    llvm_unreachable("unknown condition code");
+  case ISD::SETEQ:
+    return HS32CC::COND_EQ;
+  case ISD::SETNE:
+    return HS32CC::COND_NE;
+  case ISD::SETGT:
+    return HS32CC::COND_GT;
+  case ISD::SETGE:
+    return HS32CC::COND_GE;
+  case ISD::SETLT:
+    return HS32CC::COND_LT;
+  case ISD::SETLE:
+    return HS32CC::COND_LE;
+  case ISD::SETUGT:
+    return HS32CC::COND_AB;
+  case ISD::SETULE:
+    return HS32CC::COND_BE;
+  }
+}
+
+SDValue HS32TargetLowering::getCmpNode(SDValue LHS, SDValue RHS,
+                                       ISD::CondCode CC, SDValue &CCout,
+                                       SelectionDAG &DAG, SDLoc DL) const {
+  SDValue Cmp;
+  EVT VT = LHS.getValueType();
+
+  // Take care of SETUGE, SETULT with swapping
+  switch (CC) {
+  default:
+    break;
+  case ISD::SETUGE: {
+    std::swap(LHS, RHS);
+    CC = ISD::SETULE;
+    break;
+  }
+  case ISD::SETULT: {
+    std::swap(LHS, RHS);
+    CC = ISD::SETUGT;
+    break;
+  }
+  }
+
+  // TODO: Take care of non-32 bit comparisons
+  if (VT == MVT::i32) {
+    Cmp = DAG.getNode(HS32ISD::CMP, DL, MVT::Glue, LHS, RHS);
+  } else {
+    llvm_unreachable("invalid comparison size");
+  }
+
+  CCout = DAG.getConstant(getHS32CC(CC), DL, MVT::i32);
+  return Cmp;
+}
+  
 
 //===----------------------------------------------------------------------===//
 // DAG lowering implementation
@@ -94,6 +165,20 @@ SDValue HS32TargetLowering::LowerGlobalAddress(SDValue Op,
     return MnHi;
   }
   report_fatal_error("unable to lower global address");
+}
+
+SDValue HS32TargetLowering::LowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
+  SDValue Chain = Op.getOperand(0);
+  ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(1))->get();
+  SDValue LHS = Op.getOperand(2);
+  SDValue RHS = Op.getOperand(3);
+  SDValue Dest = Op.getOperand(4);
+  SDLoc DL(Op);
+
+  SDValue TargetCC;
+  SDValue Cmp = getCmpNode(LHS, RHS, CC, TargetCC, DAG, DL);
+  return DAG.getNode(HS32ISD::BRCOND, DL, MVT::Other, Chain, Dest, TargetCC,
+                     Cmp);
 }
 
 //===----------------------------------------------------------------------===//

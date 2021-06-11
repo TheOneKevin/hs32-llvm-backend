@@ -69,6 +69,10 @@ void HS32MCInstLower::lowerInstruction(const MachineInstr &MI,
     case MachineOperand::MO_GlobalAddress:
       MCOp = lowerSymbolOperand(MO, Printer.getSymbol(MO.getGlobal()));
       break;
+    case MachineOperand::MO_MachineBasicBlock:
+      MCOp = MCOperand::createExpr(
+        MCSymbolRefExpr::create(MO.getMBB()->getSymbol(), Ctx));
+      break;
     }
     OutMI.addOperand(MCOp);
   }

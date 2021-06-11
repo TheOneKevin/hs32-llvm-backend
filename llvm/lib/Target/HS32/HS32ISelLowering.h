@@ -2,7 +2,9 @@
 #define LLVM_HS32ISELLOWERING_H
 
 #include "HS32.h"
+#include "HS32InstrInfo.h"
 #include "llvm/CodeGen/SelectionDAG.h"
+#include "llvm/CodeGen/SelectionDAGNodes.h"
 #include "llvm/CodeGen/TargetLowering.h"
 #include "llvm/CodeGen/ISDOpcodes.h"
 
@@ -14,7 +16,9 @@ class HS32TargetMachine;
 namespace HS32ISD {
 enum NodeType : unsigned {
   FIRST_NUMBER = ISD::BUILTIN_OP_END,
-  RET_FLAG
+  RET_FLAG,
+  CMP, TST,
+  BRCOND, BLCOND
 };
 } // namespace HS32ISD
 
@@ -47,6 +51,11 @@ private:
 
 private:
   SDValue LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerBR_CC(SDValue Op, SelectionDAG &DAG) const;
+
+private:
+  SDValue getCmpNode(SDValue LHS, SDValue RHS, ISD::CondCode CC, SDValue &CCout,
+                     SelectionDAG &DAG, SDLoc LD) const;
 };
 
 } // namespace llvm
